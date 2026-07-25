@@ -1,0 +1,6 @@
+#!/bin/sh
+# Autostart the BT stack at boot (backgrounded: takes ~10 s, don't block rcS).
+case "$1" in
+    stop) ;;
+    *) /root/connsys/bt-up.sh & ;;
+esac

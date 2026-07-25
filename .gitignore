@@ -1,0 +1,21 @@
+# kernel out-of-tree build artifacts
+*.o
+*.ko
+*.mod
+*.mod.c
+*.cmd
+.*.cmd
+*.order
+*.symvers
+modules.order
+Module.symvers
+.tmp_versions/
+*.a
+
+# compiled test/launcher binaries (keep the .c sources)
+tools/btif-lpbk-test
+tools/stpbt-hci-test
+tools/hci-localver
+tools/launcher/mtk_stp_launcher
+tools/stpbt-vhci-bridge
+tools/btup-scan

@@ -1,0 +1,3 @@
+ccflags-y += -I$(src)/inc
+obj-m += mtk_btif_drv.o
+mtk_btif_drv-objs := mtk_btif.o mtk_btif_exp.o btif_plat.o btif_dma_plat.o
