@@ -113,8 +113,10 @@ place — each was a hard-won fix, see the commit history:
    SLEEP lands during a long RF operation (inquiry ≈ 10 s, paging ≈ 5 s),
    which produce no transport traffic for the 30 ms idle timer to notice.
    The bridge watches the HCI stream and holds PSM off while commands are
-   outstanding, an RF operation is in flight or an ACL link is up, and
-   enables it (30 ms idle) when quiescent.
+   outstanding or an RF operation is in flight, and enables it (30 ms idle)
+   when quiescent. Idle ACL links sleep too: inbound data (e.g. a keystroke
+   from a connected keyboard) wakes the host through the BGF EINT +
+   HOST_AWAKE exchange.
 
 Additionally, chip-initiated wakes (BGF EINT) must be answered with the
 `HOST_AWAKE` command exchange, not the `WAKEUP` pulse — the stock remap in

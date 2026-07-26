@@ -8,8 +8,9 @@
 // The bridge also governs WMT PSM via /proc/driver/wmt_dbg: the CONSYS
 // firmware dies if a WMT SLEEP lands mid-inquiry/page, and those RF ops
 // carry no STP traffic for the PSM idle timer to notice. PSM is held off
-// while HCI commands are outstanding, a long RF op is in flight, an ACL
-// link is up, or <1 s since last traffic; enabled (30 ms idle) otherwise.
+// while HCI commands are outstanding, a long RF op is in flight, or <1 s
+// since last traffic; enabled (30 ms idle) otherwise. Idle ACL links sleep
+// too: inbound data wakes the host via the BGF EINT + HOST_AWAKE path.
 // bt-up.sh must set quick-sleep off ('1 0' > wmt_dbg) before the governor
 // first enables PSM.
 //
@@ -70,7 +71,10 @@ static void governor(void)
 	if (rf_deadline && now >= rf_deadline)
 		rf_deadline = 0;
 
-	hold = outstanding > 0 || acl_links > 0 || rf_deadline ||
+	/* ACL links do NOT hold the radio awake: with a link up the chip
+	 * schedules sniff anchors autonomously and wakes the host for inbound
+	 * data via the BGF EINT + HOST_AWAKE exchange. Idle connections sleep. */
+	hold = outstanding > 0 || rf_deadline ||
 	       now - last_traffic < 1000;
 	psm_set(!hold);
 }
@@ -259,8 +263,11 @@ int main(void)
 		governor();
 	}
 	fprintf(stderr, "bridge exit (%s)\n", strerror(errno));
-	psm_set(1);	/* bridge down: nothing outstanding, let the radio sleep */
+	/* hold PSM off across the teardown: closing stpbt runs the WMT BT
+	 * func-off exchange, which must not race a sleep */
+	psm_set(0);
 	close(vh);
 	close(bt);
+	psm_set(1);
 	return 0;
 }
