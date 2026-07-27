@@ -124,7 +124,8 @@ _osal_inline_ char *osal_strcpy(char *dst, const char *src)
 
 _osal_inline_ char *osal_strncpy(char *dst, const char *src, UINT32 len)
 {
-	return strncpy(dst, src, len);
+	strscpy(dst, src, len);
+	return dst;
 }
 
 _osal_inline_ char *osal_strcat(char *dst, const char *src)
