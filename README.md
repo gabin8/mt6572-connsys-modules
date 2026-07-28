@@ -19,7 +19,7 @@ out-of-tree modules in the spirit of
 | WMT/STP control plane, firmware download | working |
 | Bluetooth (`/dev/stpbt` → BlueZ `hci0`) | working — pairing, HID keyboard, inbound reconnect |
 | Power management (PSM / chip sleep) | working (see [PSM](#power-management-psm)) |
-| WiFi | control plane only (`/dev/wmtWifi` func-on); no wlan driver yet |
+| WiFi (`wlan/` gen2 driver → cfg80211 `wlan0`) | working — scan, WPA2-PSK association, DHCP, traffic |
 | GPS / FM | not started |
 
 Verified on the Prestigio PAP5500 DUO; the Lenovo A369i carries the same
@@ -61,7 +61,19 @@ make KDIR=/path/to/tree # or point at any prepared kernel tree
 ```
 
 Produces `btif/mtk_btif_drv.ko`, `conn_soc/mtk_stp_wmt_soc.ko`,
-`conn_soc/mtk_stp_bt_soc.ko`, `conn_soc/mtk_wmt_wifi_soc.ko`.
+`conn_soc/mtk_stp_bt_soc.ko`, `conn_soc/mtk_wmt_wifi_soc.ko`,
+`wlan/wlan_gen2.ko`.
+
+The wlan driver links against cfg80211; with `CONFIG_CFG80211=m` build it
+first (`make -C <kernel> M=net/wireless modules`) — the top Makefile picks
+up its `Module.symvers` automatically.
+
+Wi-Fi needs three gitignored, device-derived blobs staged before deploy
+(see `tools/deploy-modules-sd.sh` and `tools/wifi-fw-extract.sh` in the
+parent rig repo): the `WIFI_RAM_CODE*` image, the WMT patches (installed
+under both accepted filename schemes), and the Wi-Fi NVRAM (MAC + RF
+calibration) which lands at `/etc/firmware/nvram/WIFI`. Bring-up on the
+device is `connsys-up.sh` followed by `wifi-up.sh`.
 
 Module vermagic must match the running kernel **exactly**; rebuild and
 redeploy all modules together after any kernel rebuild.
