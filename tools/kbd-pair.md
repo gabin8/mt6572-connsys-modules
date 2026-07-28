@@ -23,7 +23,7 @@ On-device sequence once modules + BlueZ rootfs are in place.
 ## 1. Bring up CONSYS + hci0 (from /root/connsys)
 ```
 sh /root/connsys/connsys-up.sh          # insmod btif+wmt+bt, launcher, PSM off, HCI smoke test
-insmod /root/connsys/bt/libaes.ko
+# libaes is built into the kernel since the 2026-07-28 config (CRYPTO_LIB_AES=y) — no insmod
 insmod /root/connsys/bt/ecc.ko
 insmod /root/connsys/bt/ecdh_generic.ko
 insmod /root/connsys/bt/bluetooth.ko
