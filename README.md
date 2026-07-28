@@ -47,9 +47,12 @@ The kernel tree the modules build against must provide:
     APDMA nodes,
   - `connectivity@18070000` node (`mediatek,mt6572-consys`) with the MCU +
     TOPCKGEN reg ranges, the `conn2ap` wakeup + WDT interrupts, the CONN
-    power domain, the TOPRGU `connsys` reset and the four `vcn*` supplies;
+    power domain, the TOPRGU `connsys` reset and the four `vcn*` supplies,
+  - `wifi@180f0000` node (`mediatek,wifi`, the CONSYS Wi-Fi AHB window,
+    GIC SPI 123 level-low) for the wlan driver;
 - `CONFIG_BT=m` core with `CONFIG_BT_HCIVHCI=m`, `CONFIG_BT_HIDP=m`,
-  `CONFIG_UHID=m` for the BlueZ/HID path.
+  `CONFIG_UHID=m` for the BlueZ/HID path;
+- `CONFIG_CFG80211` (=m works; insmod `cfg80211.ko` before `wlan_gen2.ko`).
 
 Build the kernel once (`make modules`) so `Module.symvers` exists.
 
@@ -87,12 +90,22 @@ arm-linux-gnueabihf-gcc -static -O2 -o tools/launcher/mtk_stp_launcher tools/lau
 
 ## Firmware
 
-The CONSYS firmware patch and config ship with the stock device image and
-are **not** redistributed here. Copy from a stock ROM into
-`/system/etc/firmware/` on the target rootfs:
+All CONSYS firmware ships with the stock device image and is **not**
+redistributed here. Extract from a stock ROM (the parent rig repo has
+`tools/wifi-fw-extract.sh` for the Wi-Fi pieces) onto the target rootfs:
 
-- `mt6572_82_patch_e1_0_hdr.bin`, `mt6572_82_patch_e1_1_hdr.bin`
-- `WMT_SOC.cfg`
+- `/system/etc/firmware/`: `mt6572_82_patch_e1_{0,1}_hdr.bin` — **also
+  copied as `ROMv1_patch_{0,1}_hdr.bin`**: outside Android the launcher
+  cannot read the system properties it derives the patch prefix from and
+  falls back to `ROMv<hwver>_patch`; with no match it reports zero patches,
+  the chip runs bare ROM firmware, BT still works but the Wi-Fi RAM code
+  dies at entry — and `WMT_SOC.cfg`;
+- `/lib/firmware/`: `WIFI_RAM_CODE_MT6582` (the Wi-Fi RAM image, loaded by
+  the wlan driver via request_firmware);
+- `/etc/firmware/nvram/WIFI`: the device's Wi-Fi NVRAM (MAC address + RF
+  calibration, 514 B, stock keeps it at `/data/nvram/APCFG/APRDEB/WIFI`).
+  Without it the firmware reports a fresh random MAC on every query and
+  unicast RX is broken.
 
 ## Bring-up
 
@@ -105,6 +118,9 @@ Run at boot (`tools/S99bt`) or by hand:
 2. `tools/bt-up.sh` — full stack: prerequisites (quick-sleep off, module
    sanity check), BT/HID kernel modules, the `stpbt-vhci-bridge` (creates
    `hci0` and governs PSM), D-Bus + bluetoothd, adapter power-on.
+3. `tools/wifi-up.sh` — Wi-Fi: insmods `cfg80211` + `wlan_gen2`, re-asserts
+   PSM off, function-on via `/dev/wmtWifi`, waits for `wlan0`. Then the
+   usual `iw` / `wpa_supplicant -D nl80211` / `udhcpc` flow.
 
 Pairing a classic HID keyboard end-to-end is documented in
 `tools/kbd-pair.md`.
@@ -130,6 +146,11 @@ place — each was a hard-won fix, see the commit history:
    from a connected keyboard) wakes the host through the BGF EINT +
    HOST_AWAKE exchange.
 
+**The governor only sees BT traffic — it is blind to Wi-Fi.** A WMT SLEEP
+landing during an active Wi-Fi operation kills the firmware the same way,
+so keep PSM off while Wi-Fi is in use (`wifi-up.sh` re-asserts this;
+don't run the bridge's PSM governor in Wi-Fi sessions).
+
 Additionally, chip-initiated wakes (BGF EINT) must be answered with the
 `HOST_AWAKE` command exchange, not the `WAKEUP` pulse — the stock remap in
 `wmt_lib_ps_do_host_awake()` wedges this firmware on the first inbound
@@ -144,6 +165,7 @@ windows (10 s → 360 s) and stops at the first failure.
 |---|---|
 | `connsys-up.sh` | one-shot CONSYS bring-up + HCI smoke test |
 | `bt-up.sh` / `S99bt` | full BT stack bring-up (boot service) |
+| `wifi-up.sh` | Wi-Fi bring-up: wlan modules, func-on, waits for `wlan0` |
 | `stpbt-vhci-bridge.c` | `/dev/stpbt` ↔ `/dev/vhci` pump (creates `hci0`), H4 reframing, firmware quirk shims, PSM governor |
 | `launcher/stp_uart_launcher.c` | resident WMT launcher (`-m 3` = BTIF mode): firmware download + handshake |
 | `btif-lpbk-test.c` | BTIF DMA loopback test (non-blocking; safe on the single-open device) |
