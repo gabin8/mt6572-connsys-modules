@@ -1765,6 +1765,14 @@ static void wlanSetMulticastListWorkQueue(struct work_struct *work)
 		return;
 	}
 
+	/* A station must always accept frames addressed to its own MAC. The
+	 * filter below is derived purely from netdev flags, which have no
+	 * equivalent of "unicast to me", so DIRECTED was never set and the
+	 * firmware dropped every unicast data frame — including EAPOL 1/4, so
+	 * the WPA 4-way handshake could never start.
+	 */
+	u4PacketFilter |= PARAM_PACKET_FILTER_DIRECTED;
+
 	if (prDev->flags & IFF_PROMISC)
 		u4PacketFilter |= PARAM_PACKET_FILTER_PROMISCUOUS;
 
