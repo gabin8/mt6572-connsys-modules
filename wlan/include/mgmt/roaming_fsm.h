@@ -89,10 +89,14 @@ typedef enum _ENUM_ROAMING_EVENT_T {
 #define ROAMING_EVENT_REASON_TX_ERR	BIT(0)
 #define ROAMING_EVENT_REASON_RCPI	BIT(1)
 
+/* Wire format of CMD_ID_ROAMING_TRANSIT / EVENT_ID_ROAMING_STATUS.
+ * The MT6572's 2013-era firmware asserts in its roaming FSM when the
+ * command payload is not exactly 4 bytes, so the later u2Reason field
+ * must not be included on this chip.
+ */
 typedef struct _ROAMING_PARAM_T {
 	UINT_16 u2Event;
 	UINT_16 u2Data;
-	UINT_16 u2Reason;
 } ROAMING_PARAM_T, *P_ROAMING_PARAM_T;
 
  /**/ typedef enum _ENUM_ROAMING_STATE_T {

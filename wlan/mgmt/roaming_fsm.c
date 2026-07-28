@@ -373,8 +373,8 @@ VOID roamingFsmRunEventDiscovery(IN P_ADAPTER_T prAdapter, IN P_ROAMING_PARAM_T 
 	if (!(prRoamingFsmInfo->fgIsEnableRoaming))
 		return;
 
-	DBGLOG(ROAMING, EVENT, "EVENT-ROAMING DISCOVERY: Current Time = %u Reason = %u\n",
-		kalGetTimeTick(), prParam->u2Reason);
+	DBGLOG(ROAMING, EVENT, "EVENT-ROAMING DISCOVERY: Current Time = %u\n",
+		kalGetTimeTick());
 
 	/* DECISION -> DISCOVERY */
 	/* Errors as IDLE, DISCOVERY, ROAM -> DISCOVERY */
