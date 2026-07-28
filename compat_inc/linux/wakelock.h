@@ -3,6 +3,8 @@
 #ifndef _COMPAT_LINUX_WAKELOCK_H
 #define _COMPAT_LINUX_WAKELOCK_H
 
+#include <linux/device.h>
+#include <linux/pm.h>
 #include <linux/pm_wakeup.h>
 
 enum { WAKE_LOCK_SUSPEND = 0 };

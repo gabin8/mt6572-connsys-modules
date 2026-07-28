@@ -19,3 +19,11 @@ tools/hci-localver
 tools/launcher/mtk_stp_launcher
 tools/stpbt-vhci-bridge
 tools/btup-scan
+
+# staged firmware blobs and in-tree kos (populated per kernel build)
+tools/wifi-fw/
+tools/wifi-stage/
+tools/kbd-stage/
+
+# JetBrains IDE project files
+.idea/
