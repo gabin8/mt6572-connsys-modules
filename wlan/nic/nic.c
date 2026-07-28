@@ -2004,10 +2004,14 @@ WLAN_STATUS nicUpdateBss(IN P_ADAPTER_T prAdapter, IN ENUM_NETWORK_TYPE_INDEX_T 
 #if CFG_ENABLE_WIFI_DIRECT
 	rCmdSetBssInfo.fgHiddenSsidMode = prBssInfo->eHiddenSsidType;
 #endif
-#if CFG_ENABLE_WIFI_DIRECT
-	if (prAdapter->fgIsP2PRegistered)
-		COPY_MAC_ADDR(rCmdSetBssInfo.aucOwnMac, prBssInfo->aucOwnMacAddr);
-#endif
+	/* The firmware programs its per-BSS receive-address filter from this
+	 * field, so it must be set for every BSS type. Upstream only filled it
+	 * when Wi-Fi Direct was registered, which was always true on Android;
+	 * with P2P compiled out an all-zero MAC reached the firmware and every
+	 * unicast data frame (EAPOL included) was filtered out, while
+	 * management traffic still worked.
+	 */
+	COPY_MAC_ADDR(rCmdSetBssInfo.aucOwnMac, prBssInfo->aucOwnMacAddr);
 
 	rlmFillSyncCmdParam(&rCmdSetBssInfo.rBssRlmParam, prBssInfo);
 
