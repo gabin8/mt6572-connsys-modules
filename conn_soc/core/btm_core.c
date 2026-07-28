@@ -375,18 +375,22 @@ UINT32 g_paged_dump_len = 0;
 UINT32 g_paged_trace_len = 0;
 VOID _stp_dump_emi_dump_buffer(UINT8 *buffer, UINT32 len)
 {
-	UINT32 i = 0;
+	/* The first paged dump begins with the firmware's
+	 * "<ASSERT> file.c #line" string; print it as text instead of the
+	 * original 16-byte hex preview, which truncated before the file name.
+	 */
+	char line[65];
+	UINT32 i = 0, j = 0;
 
-	if (len > 16)
-		len = 16;
+	if (len > 512)
+		len = 512;
 	for (i = 0; i < len; i++) {
-		if (i % 16 == 0 && i != 0)
-			pr_cont("\n    ");
-
-		if (buffer[i] == ']' || buffer[i] == '[' || buffer[i] == ',')
-			pr_cont("%c", buffer[i]);
-		else
-			pr_cont("0x%02x ", buffer[i]);
+		line[j++] = (buffer[i] >= 0x20 && buffer[i] < 0x7f) ? buffer[i] : '.';
+		if (j == 64 || i == len - 1) {
+			line[j] = 0;
+			pr_err("FWDUMP: %s\n", line);
+			j = 0;
+		}
 	}
 }
 #endif
