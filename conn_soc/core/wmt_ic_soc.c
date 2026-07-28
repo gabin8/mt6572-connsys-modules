@@ -79,7 +79,10 @@
 
 #define CFG_WMT_WIFI_5G_SUPPORT (1)
 
-#define CFG_WMT_PATCH_DL_OPTM (1)
+/* MCU-clock boost during patch download: 6580/6752-era fw-side register
+ * writes (WMT op 0x08) at addresses undefined on MT6572 — the ALPS 3.4
+ * MT6572 driver has no such step. The fw ACKs them blindly. OFF. */
+#define CFG_WMT_PATCH_DL_OPTM (0)
 #if CFG_WMT_LTE_COEX_HANDLING
 #define CFG_WMT_FILTER_MODE_SETTING (1)
 #else
@@ -87,7 +90,11 @@
 #endif
 #define MTK_WCN_CMB_MERGE_INTERFACE_SUPPORT (0)
 
-#define CFG_WMT_POWER_ON_DLM  (1)
+/* DLM SRAM power-on: three fw-side register writes to 0x801000xx defined
+ * for MT6580-era chips; not present in the ALPS 3.4 MT6572 driver and
+ * undocumented for this chip. Prime suspect for the WiFi RAM code dying
+ * at entry (BT unaffected). OFF to match the MT6572-native sequence. */
+#define CFG_WMT_POWER_ON_DLM  (0)
 /*******************************************************************************
 *                             D A T A   T Y P E S
 ********************************************************************************
@@ -1061,7 +1068,7 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 	ctrlPa2 = 0;
 	wmt_core_ctrl(WMT_CTRL_GET_PATCH_NUM, &ctrlPa1, &ctrlPa2);
 	patch_num = ctrlPa1;
-	WMT_DBG_FUNC("patch total num = [%d]\n", patch_num);
+	WMT_WARN_FUNC("patch total num = [%d]\n", patch_num);	/* WARN: bring-up visibility — 0 means launcher served nothing */
 
 #if CFG_WMT_PATCH_DL_OPTM
 	if (0x0279 == wmt_ic_ops_soc.icId) {
@@ -2046,7 +2053,7 @@ static INT32 mtk_wcn_soc_patch_dwn(UINT32 index)
 	ctrlData.au4CtrlData[1] = (SIZE_T) &gFullPatchName;
 	ctrlData.au4CtrlData[2] = (SIZE_T) &addressByte;
 	iRet = wmt_ctrl(&ctrlData);
-	WMT_DBG_FUNC("the %d time valid patch found: (%s)\n", index + 1, gFullPatchName);
+	WMT_WARN_FUNC("the %d time valid patch found: (%s)\n", index + 1, gFullPatchName);
 
 	/* <2.2> read patch content */
 	ctrlData.ctrlId = WMT_CTRL_GET_PATCH;

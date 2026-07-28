@@ -531,6 +531,7 @@ INT32 mtk_wcn_consys_hw_wifi_paldo_ctrl(UINT32 enable)
 }
 
 #endif
+EXPORT_SYMBOL(mtk_wcn_consys_hw_wifi_paldo_ctrl);
 INT32 mtk_wcn_consys_hw_vcn28_ctrl(UINT32 enable)
 {
 	if (enable) {
@@ -579,17 +580,8 @@ INT32 mtk_wcn_consys_hw_restore(struct device *device)
 #endif
 
 #endif
-		/*consys to ap emi remapping register:10001310, cal remapping address */
-		addrPhy = (gConEmiPhyBase & 0xFFF00000) >> 20;
-
-		/*enable consys to ap emi remapping bit12 */
-		addrPhy = addrPhy | 0x1000;
-
-		CONSYS_REG_WRITE(conn_reg.topckgen_base + CONSYS_EMI_MAPPING_OFFSET,
-				 CONSYS_REG_READ(conn_reg.topckgen_base + CONSYS_EMI_MAPPING_OFFSET) | addrPhy);
-
-		WMT_PLAT_INFO_FUNC("CONSYS_EMI_MAPPING dump in restore cb(0x%08x)\n",
-				   CONSYS_REG_READ(conn_reg.topckgen_base + CONSYS_EMI_MAPPING_OFFSET));
+		(void)addrPhy; /* no CONSYS EMI remap register on mt6572 (spike 2026-07-14);
+		 * this whole restore cb is dead on mainline anyway (CONFIG_MTK_HIBERNATION) */
 
 #if 1
 		pEmibaseaddr = ioremap(gConEmiPhyBase + CONSYS_EMI_AP_PHY_OFFSET, CONSYS_EMI_MEM_SIZE);
