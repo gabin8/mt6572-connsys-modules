@@ -71,12 +71,14 @@ The wlan driver links against cfg80211; with `CONFIG_CFG80211=m` build it
 first (`make -C <kernel> M=net/wireless modules`) — the top Makefile picks
 up its `Module.symvers` automatically.
 
-Wi-Fi needs three gitignored, device-derived blobs staged before deploy
-(see `tools/deploy-modules-sd.sh` and `tools/wifi-fw-extract.sh` in the
-parent rig repo): the `WIFI_RAM_CODE*` image, the WMT patches (installed
-under both accepted filename schemes), and the Wi-Fi NVRAM (MAC + RF
-calibration) which lands at `/etc/firmware/nvram/WIFI`. Bring-up on the
-device is `connsys-up.sh` followed by `wifi-up.sh`.
+Wi-Fi needs three device-derived blobs that are not in git (see
+[Firmware](#firmware)): the `WIFI_RAM_CODE*` image, the WMT patches
+(installed under both accepted filename schemes), and the Wi-Fi NVRAM
+(MAC + RF calibration) which lands at `/etc/firmware/nvram/WIFI`.
+`tools/wifi-fw-extract.sh` pulls all of them from the stock image;
+`tools/deploy-modules-sd.sh` reinstalls them from its `tools/wifi-fw/`
+staging on every SD deploy. Bring-up on the device is `connsys-up.sh`
+followed by `wifi-up.sh`.
 
 Module vermagic must match the running kernel **exactly**; rebuild and
 redeploy all modules together after any kernel rebuild.
@@ -91,8 +93,9 @@ arm-linux-gnueabihf-gcc -static -O2 -o tools/launcher/mtk_stp_launcher tools/lau
 ## Firmware
 
 All CONSYS firmware ships with the stock device image and is **not**
-redistributed here. Extract from a stock ROM (the parent rig repo has
-`tools/wifi-fw-extract.sh` for the Wi-Fi pieces) onto the target rootfs:
+redistributed here. Run `tools/wifi-fw-extract.sh` on the device (booted
+into the mainline rootfs, stock image still on eMMC) and it extracts and
+installs every Wi-Fi piece; or place them by hand:
 
 - `/system/etc/firmware/`: `mt6572_82_patch_e1_{0,1}_hdr.bin` — **also
   copied as `ROMv1_patch_{0,1}_hdr.bin`**: outside Android the launcher
