@@ -68,8 +68,9 @@ Produces `btif/mtk_btif_drv.ko`, `conn_soc/mtk_stp_wmt_soc.ko`,
 `wlan/wlan_gen2.ko`.
 
 The wlan driver links against cfg80211; with `CONFIG_CFG80211=m` build it
-first (`make -C <kernel> M=net/wireless modules`) — the top Makefile picks
-up its `Module.symvers` automatically.
+first (`tools/build-staged-modules.sh` does this, and also stages the
+BT/HID mainline modules the deploy ships) — the top Makefile picks up its
+`Module.symvers` automatically.
 
 Wi-Fi needs three device-derived blobs that are not in git (see
 [Firmware](#firmware)): the `WIFI_RAM_CODE*` image, the WMT patches
@@ -177,6 +178,7 @@ windows (10 s → 360 s) and stops at the first failure.
 | `btup-scan.c` | minimal inquiry scan over `hci0` |
 | `psm-sleep-probe.sh` | PSM deep-sleep wake threshold probe |
 | `connsys-regdump.sh` | CONSYS-related register dump (devmem) |
+| `build-staged-modules.sh` | rebuild the staged mainline modules (cfg80211, BT/HID set) from a kernel tree |
 | `deploy-modules-sd.sh` | sync modules + tools + scripts onto an SD-card rootfs |
 | `kbd-pair.md` | classic BT HID keyboard pairing runbook |
 
