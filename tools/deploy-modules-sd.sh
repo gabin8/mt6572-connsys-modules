@@ -49,9 +49,12 @@ cp "$M"/tools/wifi-fw/WMT_SOC.cfg "$SD/system/etc/firmware/"
 # exact path. Without it the firmware invents a RANDOM MAC on every query, the
 # netdev MAC and the per-BSS receive filter end up different, and the fw drops
 # every unicast data frame (EAPOL included) while management traffic works.
-if [ -f "$M"/tools/wifi-fw/nvram-WIFI ]; then
+# Override with NVRAM_BLOB=/path/to/blob for a different board - the blob
+# is per-device (it carries the MAC + RF calibration).
+NVRAM_BLOB="${NVRAM_BLOB:-$M/tools/wifi-fw/nvram-WIFI}"
+if [ -f "$NVRAM_BLOB" ]; then
 	mkdir -p "$SD/etc/firmware/nvram"
-	cp "$M"/tools/wifi-fw/nvram-WIFI "$SD/etc/firmware/nvram/WIFI"
+	cp "$NVRAM_BLOB" "$SD/etc/firmware/nvram/WIFI"
 else
 	echo "WARNING: tools/wifi-fw/nvram-WIFI missing (gitignored, device-specific)" >&2
 	echo "         extract it from the stock NVRAM or Wi-Fi runs with a random MAC" >&2
@@ -71,7 +74,8 @@ for b in launcher/mtk_stp_launcher stpbt-hci-test; do
 	install -m 0755 "$M/tools/$b" "$SD/root/connsys/$(basename "$b")"
 done
 cp "$M/tools/wifi-up.sh" "$SD/root/connsys/wifi-up.sh"
-chmod +x "$SD/root/connsys/wifi-up.sh"
+cp "$M/tools/wifi-fw-extract.sh" "$SD/root/connsys/wifi-fw-extract.sh"
+chmod +x "$SD/root/connsys/wifi-up.sh" "$SD/root/connsys/wifi-fw-extract.sh"
 
 # 4. Scripts + bridge — keep in lockstep with the .ko: the PSM stack needs
 # all three fixes together (AP2CONN_OSC_EN in mtk_stp_wmt_soc.ko, quick-sleep
