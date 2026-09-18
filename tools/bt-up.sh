@@ -36,8 +36,13 @@ fi
 
 # 3. BT/HID kernel modules
 cd /root/connsys/bt || exit 1
-for m in libaes ecc ecdh_generic bluetooth hci_vhci hidp uhid; do
-    lsmod | grep -q "^$m " || insmod $m.ko || exit 1
+# Some of these are built into the kernel depending on the config (libaes is
+# CONFIG_CRYPTO_LIB_AES=y here), in which case there is no .ko to load and
+# lsmod never lists them. Skip those instead of failing the whole bring-up.
+for m in libaes ecc kpp ecdh_generic bluetooth hci_vhci hidp uhid; do
+    lsmod | grep -q "^$m " && continue
+    [ -f "$m.ko" ] || { echo "$m: built into the kernel, skipping"; continue; }
+    insmod $m.ko || exit 1
 done
 
 # 4. stpbt <-> vhci bridge (creates hci0, governs PSM)
@@ -46,25 +51,44 @@ if ! ps | grep -q '[s]tpbt-vhci-bridge'; then
     sleep 2
 fi
 
-# 5. D-Bus system bus
-export LD_LIBRARY_PATH=/opt/bt/libs
-/opt/bt/bin/dbus-uuidgen --ensure
+# 5. Locate BlueZ. /opt/bt is the hand-built stack from the early bring-up; a
+# buildroot rootfs ships BlueZ in the usual places and already runs dbus from
+# its own init script. Take whichever is present.
+if [ -x /opt/bt/bin/bluetoothctl ]; then
+    export LD_LIBRARY_PATH=/opt/bt/libs
+    BTCTL=/opt/bt/bin/bluetoothctl
+    BTD=/opt/bt/libexec/bluetoothd
+    DBUS_UUIDGEN=/opt/bt/bin/dbus-uuidgen
+    DBUS_START="/opt/bt/bin/dbus-daemon --config-file=/opt/bt/dbus/system.conf --fork"
+else
+    BTCTL=$(command -v bluetoothctl)
+    BTD=/usr/libexec/bluetooth/bluetoothd
+    DBUS_UUIDGEN=$(command -v dbus-uuidgen)
+    DBUS_START="$(command -v dbus-daemon) --system --fork"
+fi
+[ -x "$BTCTL" ] || { echo "no bluetoothctl found"; exit 1; }
+[ -x "$BTD" ]   || { echo "no bluetoothd found ($BTD)"; exit 1; }
+
+# 5b. D-Bus system bus
+[ -n "$DBUS_UUIDGEN" ] && "$DBUS_UUIDGEN" --ensure
 mkdir -p /run/dbus /var/lib/bluetooth
 if [ ! -S /run/dbus/system_bus_socket ]; then
-    /opt/bt/bin/dbus-daemon --config-file=/opt/bt/dbus/system.conf --fork
+    $DBUS_START
 fi
 
-# 6. bluetoothd
+# 6. bluetoothd. Start it here even though an init script may have tried at
+# boot: there is no adapter that early (connsys-up.sh has not run yet), so it
+# gives up and exits, and bluetoothctl then hangs on an empty bus.
 if ! ps | grep -q '[b]luetoothd'; then
-    /opt/bt/libexec/bluetoothd -n > /root/btd.log 2>&1 &
-    sleep 2
+    "$BTD" -n > /root/btd.log 2>&1 &
+    sleep 3
 fi
 
 # 7. adapter up (bonded+trusted keyboard then reconnects on any keypress).
 # Retry: bluetoothd's adapter registration races the first power-on attempt.
 PWR=""
 for i in 1 2 3 4 5 6 7 8 9 10; do
-    PWR=$(/opt/bt/bin/bluetoothctl power on 2>&1)
+    PWR=$("$BTCTL" power on </dev/null 2>&1)
     echo "$PWR" | grep -q succeeded && break
     sleep 1
 done
