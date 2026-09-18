@@ -74,6 +74,15 @@ static const WMT_IC_PIN_STATE cmb_aif2pin_stat[] = {
 #if CFG_WMT_PS_SUPPORT
 static UINT32 gPsIdleTime = STP_PSM_IDLE_TIME_SLEEP;
 static UINT32 gPsEnable = 1;
+/*
+ * Keep-awake references held by subsystems whose activity the STP idle
+ * timer cannot see. The timer only watches BTIF transport traffic, so it
+ * is blind to Wi-Fi entirely - the Wi-Fi datapath runs over the CONSYS AHB
+ * HIF and never touches BTIF. A WMT SLEEP landing mid-operation kills the
+ * firmware, so while any reference is held PSM stays off no matter what
+ * the policy in userspace asks for.
+ */
+static atomic_t gPsHold = ATOMIC_INIT(0);
 static PF_WMT_SDIO_PSOP sdio_own_ctrl;
 #endif
 
@@ -467,11 +476,50 @@ INT32 wmt_lib_ps_ctrl(UINT32 state)
 
 INT32 wmt_lib_ps_enable(VOID)
 {
+	if (atomic_read(&gPsHold)) {
+		pr_info_ratelimited("wmt: PSM enable deferred, %d keep-awake ref(s) held\n",
+				    atomic_read(&gPsHold));
+		return 0;
+	}
+
 	if (gPsEnable)
 		mtk_wcn_stp_psm_enable(gPsIdleTime);
 
 	return 0;
 }
+
+/*
+ * Take/drop a keep-awake reference. The first reference forces PSM off
+ * regardless of gPsEnable; the last one released hands control back to the
+ * configured policy. Exported for the Wi-Fi driver, which the STP idle
+ * timer cannot observe.
+ */
+INT32 mtk_wcn_wmt_psm_hold(VOID)
+{
+	if (atomic_inc_return(&gPsHold) == 1) {
+		pr_info("wmt: keep-awake taken, forcing PSM off\n");
+		mtk_wcn_stp_psm_disable();
+	}
+	return 0;
+}
+EXPORT_SYMBOL(mtk_wcn_wmt_psm_hold);
+
+INT32 mtk_wcn_wmt_psm_release(VOID)
+{
+	INT32 left = atomic_dec_return(&gPsHold);
+
+	if (left < 0) {
+		pr_err("wmt: keep-awake underflow, clamping\n");
+		atomic_set(&gPsHold, 0);
+		return -1;
+	}
+	if (left == 0) {
+		pr_info("wmt: keep-awake dropped, PSM back under policy\n");
+		wmt_lib_ps_enable();
+	}
+	return 0;
+}
+EXPORT_SYMBOL(mtk_wcn_wmt_psm_release);
 
 INT32 wmt_lib_ps_disable(VOID)
 {

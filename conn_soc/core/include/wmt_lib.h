@@ -220,6 +220,8 @@ extern INT32 wmt_lib_ps_set_idle_time(UINT32 psIdleTime);
 extern INT32 wmt_lib_ps_init(VOID);
 extern INT32 wmt_lib_ps_deinit(VOID);
 extern INT32 wmt_lib_ps_enable(VOID);
+extern INT32 mtk_wcn_wmt_psm_hold(VOID);
+extern INT32 mtk_wcn_wmt_psm_release(VOID);
 extern INT32 wmt_lib_ps_ctrl(UINT32 state);
 
 extern INT32 wmt_lib_ps_disable(VOID);

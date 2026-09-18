@@ -2132,6 +2132,16 @@ static int wlanOpen(struct net_device *prDev)
 {
 	ASSERT(prDev);
 
+	/*
+	 * Hold the chip awake for as long as the interface is up. The WMT
+	 * power-save idle timer only watches BTIF transport traffic, and the
+	 * Wi-Fi datapath never goes near BTIF - it runs over the CONSYS AHB
+	 * HIF - so from the timer's point of view an actively transferring
+	 * Wi-Fi link looks completely idle. A WMT SLEEP landing in the middle
+	 * of an RF operation takes the firmware down with it.
+	 */
+	mtk_wcn_wmt_psm_hold();
+
 	netif_tx_start_all_queues(prDev);
 
 	return 0;		/* success */
@@ -2173,6 +2183,9 @@ static int wlanStop(struct net_device *prDev)
 	if (prScanRequest)
 		cfg80211_scan_done(prScanRequest, &info);
 	netif_tx_stop_all_queues(prDev);
+
+	/* Interface is down - let the configured PSM policy resume. */
+	mtk_wcn_wmt_psm_release();
 
 	return 0;		/* success */
 }				/* end of wlanStop() */

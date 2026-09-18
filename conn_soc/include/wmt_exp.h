@@ -279,6 +279,13 @@ extern MTK_WCN_BOOL mtk_wcn_wmt_assert(ENUM_WMTDRV_TYPE_T type, UINT32 reason);
 extern MTK_WCN_BOOL mtk_wcn_wmt_func_off(ENUM_WMTDRV_TYPE_T type);
 
 extern MTK_WCN_BOOL mtk_wcn_wmt_func_on(ENUM_WMTDRV_TYPE_T type);
+/*
+ * Keep-awake references for subsystems the STP idle timer cannot see
+ * (Wi-Fi runs over the CONSYS AHB HIF, never over BTIF). While any
+ * reference is held the chip will not be put to sleep.
+ */
+extern INT32 mtk_wcn_wmt_psm_hold(VOID);
+extern INT32 mtk_wcn_wmt_psm_release(VOID);
 
 extern MTK_WCN_BOOL mtk_wcn_wmt_dsns_ctrl(ENUM_WMTDSNS_TYPE_T eType);
 

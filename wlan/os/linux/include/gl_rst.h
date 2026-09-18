@@ -95,6 +95,15 @@ extern int wifi_reset_start(void);
 extern int wifi_reset_end(ENUM_RESET_STATUS_T);
 #endif
 extern MTK_WCN_BOOL mtk_wcn_wmt_assert(ENUM_WMTDRV_TYPE_T type, UINT32 reason);
+
+/*
+ * WMT keep-awake references. The WMT power-save idle timer only sees BTIF
+ * transport traffic, so it cannot observe Wi-Fi at all - our datapath runs
+ * over the CONSYS AHB HIF. Hold a reference while the interface is up so a
+ * WMT SLEEP cannot land inside an RF operation.
+ */
+extern INT_32 mtk_wcn_wmt_psm_hold(void);
+extern INT_32 mtk_wcn_wmt_psm_release(void);
 extern BOOLEAN mtk_wcn_set_connsys_power_off_flag(BOOLEAN value);
 
 /*******************************************************************************
