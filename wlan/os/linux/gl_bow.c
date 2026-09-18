@@ -1121,7 +1121,7 @@ BOOLEAN kalInitBowDevice(IN P_GLUE_INFO_T prGlueInfo, IN const char *prDevName)
 		COPY_MAC_ADDR(rMacAddr, prAdapter->rMyMacAddr);
 		rMacAddr[0] |= 0x2;
 		/* change to local administrated address */
-		ether_addr_copy(prGlueInfo->rBowInfo.prDevHandler->dev_addr, rMacAddr);
+		eth_hw_addr_set(prGlueInfo->rBowInfo.prDevHandler, rMacAddr);
 		ether_addr_copy(prGlueInfo->rBowInfo.prDevHandler->perm_addr,
 			prGlueInfo->rBowInfo.prDevHandler->dev_addr);
 		/* 1.3 register callback functions */
