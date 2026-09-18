@@ -7,7 +7,7 @@
 #
 #   wifi-stage/  cfg80211.ko                      (wlan_gen2 links against it)
 #   kbd-stage/   bluetooth, hidp, hci_vhci, uhid, (BlueZ + HID keyboard path)
-#                ecc, ecdh_generic                (SMP pairing crypto)
+#                ecc, ecdh_generic, kpp           (SMP pairing crypto)
 #
 # The kernel config must have them =m (CONFIG_CFG80211, CONFIG_BT,
 # CONFIG_BT_HIDP, CONFIG_BT_HCIVHCI, CONFIG_UHID and the BT-selected
@@ -35,7 +35,7 @@ build net/wireless      cfg80211.ko
 build net/bluetooth     bluetooth.ko hidp/hidp.ko
 build drivers/bluetooth hci_vhci.ko
 build drivers/hid       uhid.ko
-build crypto            ecc.ko ecdh_generic.ko
+build crypto            ecc.ko ecdh_generic.ko kpp.ko
 
 mkdir -p "$HERE/wifi-stage" "$HERE/kbd-stage"
 cp "$KDIR/net/wireless/cfg80211.ko"        "$HERE/wifi-stage/"
@@ -45,6 +45,7 @@ cp "$KDIR/drivers/bluetooth/hci_vhci.ko"   "$HERE/kbd-stage/"
 cp "$KDIR/drivers/hid/uhid.ko"             "$HERE/kbd-stage/"
 cp "$KDIR/crypto/ecc.ko"                   "$HERE/kbd-stage/"
 cp "$KDIR/crypto/ecdh_generic.ko"          "$HERE/kbd-stage/"
+cp "$KDIR/crypto/kpp.ko"                   "$HERE/kbd-stage/"
 
 echo "staged:"
 for k in "$HERE"/wifi-stage/*.ko "$HERE"/kbd-stage/*.ko; do
