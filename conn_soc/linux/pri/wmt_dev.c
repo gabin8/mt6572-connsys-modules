@@ -54,6 +54,8 @@
 #ifdef CONFIG_COMPAT
 #include <linux/compat.h>
 #endif
+#include <linux/kernel_read_file.h>
+#include <linux/sizes.h>
 #if WMT_CREATE_NODE_DYNAMIC
 #include <linux/device.h>
 #endif
@@ -1436,16 +1438,10 @@ INT32 wmt_dev_rx_timeout(P_OSAL_EVENT pEvent)
 
 INT32 wmt_dev_read_file(PUINT8 pName, const PPUINT8 ppBufPtr, INT32 offset, INT32 padSzBuf)
 {
-	INT32 iRet = -1;
-	struct file *fd;
-	/* ssize_t iRet; */
-	INT32 file_len;
-	INT32 read_len;
+	PVOID pFileBuf = NULL;
 	PVOID pBuf;
-	loff_t rpos;
-
-	/* struct cred *cred = get_task_cred(current); */
-	/* const struct cred *cred = get_current_cred(); */
+	size_t file_len = 0;
+	ssize_t read_len;
 
 	if (!ppBufPtr) {
 		WMT_ERR_FUNC("invalid ppBufptr!\n");
@@ -1453,46 +1449,36 @@ INT32 wmt_dev_read_file(PUINT8 pName, const PPUINT8 ppBufPtr, INT32 offset, INT3
 	}
 	*ppBufPtr = NULL;
 
-	fd = filp_open(pName, O_RDONLY, 0);
-        if (IS_ERR(fd)) {
-            WMT_ERR_FUNC("error code:%d\n", PTR_ERR(fd));
-            return -2;
-        }
+	/*
+	 * Resolve in the init namespace, not the caller's. The WMT ops that
+	 * pull the firmware patches run on the mtk_wmtd kernel thread, and a
+	 * kernel thread's fs root is the boot root - which switch_root empties
+	 * when the real rootfs lives on storage. A plain filp_open() of any
+	 * absolute path from there returns -ENOENT even though the file is
+	 * perfectly readable from userspace.
+	 */
+	read_len = kernel_read_file_from_path_initns(pName, offset, &pFileBuf,
+						     SZ_4M, &file_len,
+						     READING_FIRMWARE);
+	if (read_len < 0) {
+		WMT_ERR_FUNC("read (%s) fail, error code:%zd\n", pName, read_len);
+		return -2;
+	}
 
-
-#if 0
-	if (!fd || IS_ERR(fd) || !fd->f_op || !fd->f_op->read) {
-		WMT_ERR_FUNC("failed to open or read!(0x%p, %d, %d, %d)\n", fd, PTR_ERR(fd), cred->fsuid, cred->fsgid);
-		if (IS_ERR(fd))
-			WMT_ERR_FUNC("error code:%d\n", PTR_ERR(fd));
+	/* |<-padSzBuf bytes dummy allocated->|<-file->|, see mtk_wcn_soc_patch_dwn() */
+	pBuf = vmalloc((read_len + padSzBuf + 3) & ~0x3UL);
+	if (!pBuf) {
+		WMT_ERR_FUNC("failed to vmalloc(%zd)\n", read_len + padSzBuf);
+		vfree(pFileBuf);
 		return -1;
 	}
-#endif
-	file_len = i_size_read(file_inode(fd));
-	pBuf = vmalloc((file_len + BCNT_PATCH_BUF_HEADROOM + 3) & ~0x3UL);
-	if (!pBuf) {
-		WMT_ERR_FUNC("failed to vmalloc(%d)\n", (INT32) ((file_len + 3) & ~0x3UL));
-		goto read_file_done;
-	}
 
-	rpos = offset;
-	read_len = kernel_read(fd, pBuf + padSzBuf, file_len, &rpos);
-	if (read_len != file_len)
-		WMT_WARN_FUNC("read abnormal: read_len(%d), file_len(%d)\n", read_len, file_len);
+	memcpy(pBuf + padSzBuf, pFileBuf, read_len);
+	vfree(pFileBuf);
 
-	iRet = 0;
 	*ppBufPtr = pBuf;
 
-read_file_done:
-	if (iRet) {
-		if (pBuf)
-			vfree(pBuf);
-
-	}
-
-	filp_close(fd, NULL);
-
-	return (iRet) ? iRet : read_len;
+	return read_len;
 }
 
 /* TODO: [ChangeFeature][George] refine this function name for general filesystem read operation, not patch only. */
