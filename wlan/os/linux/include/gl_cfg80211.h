@@ -223,13 +223,13 @@ mtk_cfg80211_change_iface(struct wiphy *wiphy,
 
 int
 mtk_cfg80211_add_key(struct wiphy *wiphy,
-		     struct net_device *ndev,
+		     struct wireless_dev *wdev,
 		     int link_id,
 		     u8 key_index, bool pairwise, const u8 *mac_addr, struct key_params *params);
 
 int
 mtk_cfg80211_get_key(struct wiphy *wiphy,
-		     struct net_device *ndev,
+		     struct wireless_dev *wdev,
 		     int link_id,
 		     u8 key_index,
 		     bool pairwise,
@@ -237,22 +237,22 @@ mtk_cfg80211_get_key(struct wiphy *wiphy,
 );
 
 int
-mtk_cfg80211_del_key(struct wiphy *wiphy, struct net_device *ndev, int link_id, u8 key_index, bool pairwise, const u8 *mac_addr);
+mtk_cfg80211_del_key(struct wiphy *wiphy, struct wireless_dev *wdev, int link_id, u8 key_index, bool pairwise, const u8 *mac_addr);
 
 int
 mtk_cfg80211_set_default_key(struct wiphy *wiphy, struct net_device *ndev, int link_id, u8 key_index, bool unicast, bool multicast);
 
-int mtk_cfg80211_set_default_mgmt_key(struct wiphy *wiphy, struct net_device *netdev, int link_id, u8 key_index);
+int mtk_cfg80211_set_default_mgmt_key(struct wiphy *wiphy, struct wireless_dev *wdev, int link_id, u8 key_index);
 
-int mtk_cfg80211_get_station(struct wiphy *wiphy, struct net_device *ndev, const u8 *mac, struct station_info *sinfo);
+int mtk_cfg80211_get_station(struct wiphy *wiphy, struct wireless_dev *wdev, const u8 *mac, struct station_info *sinfo);
 
-int mtk_cfg80211_add_station(struct wiphy *wiphy, struct net_device *ndev,
+int mtk_cfg80211_add_station(struct wiphy *wiphy, struct wireless_dev *wdev,
 				const u8 *mac, struct station_parameters *params);
 
-int mtk_cfg80211_change_station(struct wiphy *wiphy, struct net_device *ndev,
+int mtk_cfg80211_change_station(struct wiphy *wiphy, struct wireless_dev *wdev,
 				const u8 *mac, struct station_parameters *params);
 
-int mtk_cfg80211_del_station(struct wiphy *wiphy, struct net_device *ndev, struct station_del_parameters *params);
+int mtk_cfg80211_del_station(struct wiphy *wiphy, struct wireless_dev *wdev, struct station_del_parameters *params);
 //int mtk_cfg80211_del_station(struct wiphy *wiphy, struct net_device *ndev, const u8 *mac);
 
 int mtk_cfg80211_scan(struct wiphy *wiphy, struct cfg80211_scan_request *request);
@@ -276,7 +276,8 @@ int mtk_cfg80211_flush_pmksa(struct wiphy *wiphy, struct net_device *ndev);
 int mtk_cfg80211_remain_on_channel(struct wiphy *wiphy,
 				   struct wireless_dev *wdev,
 				   struct ieee80211_channel *chan,
-				   unsigned int duration, u64 *cookie);
+				   unsigned int duration, u64 *cookie,
+				   const u8 *rx_addr);
 
 int mtk_cfg80211_cancel_remain_on_channel(struct wiphy *wiphy, struct wireless_dev *wdev, u64 cookie);
 
