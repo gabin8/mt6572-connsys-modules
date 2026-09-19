@@ -79,7 +79,7 @@ BT/HID mainline modules the deploy ships) — the top Makefile picks up its
 Wi-Fi needs three device-derived blobs that are not in git (see
 [Firmware](#firmware)): the `WIFI_RAM_CODE*` image, the WMT patches
 (installed under both accepted filename schemes), and the Wi-Fi NVRAM
-(RF calibration) which lands at `/etc/firmware/nvram/WIFI`.
+(MAC + RF calibration) which lands at `/etc/firmware/nvram/WIFI`.
 `tools/wifi-fw-extract.sh` pulls all of them from the stock image;
 `tools/deploy-modules-sd.sh` reinstalls them from its `tools/wifi-fw/`
 staging on every SD deploy. Bring-up on the device is `connsys-up.sh`
@@ -114,19 +114,10 @@ installs every Wi-Fi piece; or place them by hand:
   514 B, stock keeps it at `/data/nvram/APCFG/APRDEB/WIFI`). Without it
   unicast RX is broken — the per-BSS receive filter and the netdev address
   disagree and the firmware drops every unicast data frame, EAPOL included.
-  **Known bug — the MAC is not being taken from it.** `wlan0` comes up as
-  `00:08:22:xx:xx:xx` with a fresh random tail on every Wi-Fi func-on (not
-  just every boot), while stock uses the factory MAC. The blob is fine and
-  is laid out exactly as the driver expects — `_MT6620_CFG_PARAM_STRUCT`
-  puts `aucMacAddress[6]` at offset 4, which is where the factory address
-  sits (stock `wlan0` and the stock `[wlan] MAC address:` log line agree
-  with it byte for byte). The gate is in `glLoadNvram()`
-  (`wlan/os/linux/gl_init.c`): it only sets `fgNvramAvailable` and reads the
-  MAC if a probe `kalCfgDataRead16()` of the **last u16 of the whole
-  struct** succeeds, and that offset is past the end of the 514-byte file,
-  so the read fails and the MAC, country code and TX power are all skipped.
-  Association and traffic work regardless; the visible cost is a new DHCP
-  lease on every bring-up.
+  It carries the factory MAC too, at offset 4 —
+  `_MT6620_CFG_PARAM_STRUCT` starts with two version u16s and then
+  `aucMacAddress[6]`. `wlan0` comes up with it, matching stock byte for
+  byte.
 
 ## Bring-up
 
@@ -209,14 +200,15 @@ windows (10 s → 360 s) and stops at the first failure.
   Reboot; don't trust any test result after that line.
 - Do not access BTIF registers with `devmem` while the block is idle — the
   bus hangs and the watchdog reboots the board.
-- The WMT firmware patches are read with
+- The WMT firmware patches and the Wi-Fi NVRAM are read with
   `kernel_read_file_from_path_initns()`, not a plain `filp_open()`. The
   patch download runs on the `mtk_wmtd` kernel thread, whose fs root is the
   boot root — and an initramfs that `switch_root`s to a rootfs on storage
   leaves that root empty, so any absolute path fails with `-ENOENT` while
   the same file reads fine from userspace. Symptom if this regresses:
   `wmt_dev_patch_get ... fail, iRet(-2)` then `BT_open: WMT turn on BT
-  fail!`, with the files plainly present on disk.
+  fail!`, or `[nvram_read] : failed to open!!` followed by a random
+  `00:08:22:xx:xx:xx` MAC — with the files plainly present on disk.
 - BT and Wi-Fi do run together (verified: a full BT inquiry alongside a
   25-packet ping, 0% loss, no assert), but the inquiry monopolises the
   shared MT6627N front end in bursts — round-trip average went from ~5 ms

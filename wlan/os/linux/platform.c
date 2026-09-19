@@ -106,6 +106,7 @@
 #include <linux/types.h>
 #include <linux/module.h>
 #include <linux/fs.h>
+#include <linux/kernel_read_file.h>
 
 #include <linux/uaccess.h>
 
@@ -378,19 +379,24 @@ void wlanUnregisterNotifier(void)
 static int nvram_read(char *filename, char *buf, ssize_t len, int offset)
 {
 #if CFG_SUPPORT_NVRAM
-	struct file *fd;
-	loff_t pos = offset;
-	int retLen;
+	void *pvBuf = buf;
+	size_t u4FileSize = 0;
+	ssize_t retLen;
 
-	fd = filp_open(filename, O_RDONLY, 0644);
-	if (IS_ERR(fd)) {
-		DBGLOG(INIT, INFO, "[nvram_read] : failed to open!!\n");
+	/*
+	 * Resolve in the init namespace, not the caller's. wlanProbe() and the
+	 * NVRAM reads it drives run on the mtk_wmtd kernel thread, and a kernel
+	 * thread's fs root is the boot root - which switch_root empties once the
+	 * real rootfs lives on storage. A plain filp_open() from there returns
+	 * -ENOENT even though the file reads perfectly from userspace, and the
+	 * driver then quietly falls back to a firmware-generated random MAC.
+	 */
+	retLen = kernel_read_file_from_path_initns(filename, offset, &pvBuf, len,
+						   &u4FileSize, READING_FIRMWARE);
+	if (retLen < 0) {
+		DBGLOG(INIT, INFO, "[nvram_read] : failed to open!! (%zd)\n", retLen);
 		return -1;
 	}
-
-	retLen = kernel_read(fd, buf, len, &pos);
-
-	filp_close(fd, NULL);
 
 	return retLen;
 
