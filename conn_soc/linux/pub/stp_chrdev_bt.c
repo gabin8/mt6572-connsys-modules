@@ -18,6 +18,8 @@
 #include <linux/kernel.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
+#include <linux/cleanup.h>
+#include <linux/mutex.h>
 #include <linux/sched.h>
 #include <asm/current.h>
 #include <asm/uaccess.h>
@@ -728,9 +730,25 @@ long BT_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	return BT_unlocked_ioctl(filp, cmd, arg);
 }
 
+/*
+ * The BT function is shared by all openers, so turning it off on any close
+ * tears it down under the others: their HCI commands then go unanswered and
+ * the host escalates to a NoAck assert and a whole-chip reset.
+ */
+static DEFINE_MUTEX(bt_open_mtx);
+static int bt_open_count;
+
 static int BT_open(struct inode *inode, struct file *file)
 {
 	BT_INFO_FUNC("%s: major %d minor %d pid %d\n", __func__, imajor(inode), iminor(inode), current->pid);
+
+	guard(mutex)(&bt_open_mtx);
+
+	if (bt_open_count > 0) {
+		bt_open_count++;
+		BT_INFO_FUNC("%s: already on, openers=%d\n", __func__, bt_open_count);
+		return 0;
+	}
 
 	/* Turn on BT */
 	if (MTK_WCN_BOOL_FALSE == mtk_wcn_wmt_func_on(WMTDRV_TYPE_BT)) {
@@ -763,6 +781,7 @@ static int BT_open(struct inode *inode, struct file *file)
 	sema_init(&wr_mtx, 1);
 	/* init_MUTEX(&rd_mtx); */
 	sema_init(&rd_mtx, 1);
+	bt_open_count = 1;
 	BT_INFO_FUNC("%s: finish\n", __func__);
 
 	return 0;
@@ -771,6 +790,16 @@ static int BT_open(struct inode *inode, struct file *file)
 static int BT_close(struct inode *inode, struct file *file)
 {
 	BT_INFO_FUNC("%s: major %d minor %d pid %d\n", __func__, imajor(inode), iminor(inode), current->pid);
+
+	guard(mutex)(&bt_open_mtx);
+
+	if (bt_open_count > 1) {
+		bt_open_count--;
+		BT_INFO_FUNC("%s: still open, openers=%d\n", __func__, bt_open_count);
+		return 0;
+	}
+	bt_open_count = 0;
+
 	rstflag = 0;
 	mtk_wcn_wmt_msgcb_unreg(WMTDRV_TYPE_BT);
 	mtk_wcn_stp_register_event_cb(BT_TASK_INDX, NULL);
