@@ -41,6 +41,13 @@ silicon.
 
 ## Kernel prerequisites
 
+Built and verified against **linux-next 7.2.0-rc4-next-20260721**. The
+forward-port tracks current APIs — `cfg80211` ops that take a
+`wireless_dev *`, `eth_hw_addr_set()` for the netdev MAC, and
+`kernel_read_file_from_path_initns()` for firmware/NVRAM — so building
+against a materially older tree needs those three reverted, not just
+adjusted.
+
 The kernel tree the modules build against must provide:
 
 - MT6572 platform support (clocks, pinctrl, pwrap/MT6323 regulators) plus:
