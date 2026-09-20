@@ -20,6 +20,7 @@ out-of-tree modules in the spirit of
 | Bluetooth (`/dev/stpbt` → BlueZ `hci0`) | working — pairing, HID keyboard, inbound reconnect |
 | Power management (PSM / chip sleep) | working (see [PSM](#power-management-psm)) |
 | WiFi (`wlan/` gen2 driver → cfg80211 `wlan0`) | working — scan, WPA2-PSK association, DHCP, traffic |
+| BT + WiFi together | working — inquiry alongside traffic, no assert; costs Wi-Fi latency |
 | GPS / FM | not started |
 
 Verified on the Prestigio PAP5500 DUO; the Lenovo A369i carries the same
@@ -130,16 +131,18 @@ Run at boot (`tools/S99bt`) or by hand:
 2. `tools/bt-up.sh` — full stack: prerequisites (quick-sleep off, module
    sanity check), BT/HID kernel modules, the `stpbt-vhci-bridge` (creates
    `hci0` and governs PSM), D-Bus + bluetoothd, adapter power-on.
-3. `tools/wifi-up.sh` — Wi-Fi: insmods `cfg80211` + `wlan_gen2`, re-asserts
-   PSM off, function-on via `/dev/wmtWifi`, waits for `wlan0`. Then the
-   usual `iw` / `wpa_supplicant -D nl80211` / `udhcpc` flow.
+3. `tools/wifi-up.sh` — Wi-Fi: insmods `cfg80211` + `wlan_gen2`,
+   function-on via `/dev/wmtWifi`, waits for `wlan0`. Then the usual
+   `iw` / `wpa_supplicant -D nl80211` / `udhcpc` flow. PSM needs no
+   manual handling: the driver holds a keep-awake reference while the
+   interface is up.
 
 Pairing a classic HID keyboard end-to-end is documented in
 `tools/kbd-pair.md`.
 
 ## Power management (PSM)
 
-PSM (the firmware's sleep mode) works, but only with all three of these in
+PSM (the firmware's sleep mode) works, but only with all four of these in
 place — each was a hard-won fix, see the commit history:
 
 1. **`AP2CONN_OSC_EN` (TOPCKGEN `0x10001800` bit 16)** is forced on at
@@ -158,10 +161,16 @@ place — each was a hard-won fix, see the commit history:
    from a connected keyboard) wakes the host through the BGF EINT +
    HOST_AWAKE exchange.
 
-**The governor only sees BT traffic — it is blind to Wi-Fi.** A WMT SLEEP
-landing during an active Wi-Fi operation kills the firmware the same way,
-so keep PSM off while Wi-Fi is in use (`wifi-up.sh` re-asserts this;
-don't run the bridge's PSM governor in Wi-Fi sessions).
+4. **Wi-Fi holds a keep-awake reference.** The bridge's governor watches
+   the HCI stream and is blind to Wi-Fi — the Wi-Fi datapath runs over the
+   CONSYS AHB HIF and never touches BTIF, so an actively transferring link
+   looks idle to it. `wlan_gen2` therefore calls
+   `mtk_wcn_wmt_psm_hold()` in `wlanOpen()` and `mtk_wcn_wmt_psm_release()`
+   in `wlanStop()`, and `wmt_lib_ps_enable()` refuses to enable sleep while
+   any reference is held — so the BT governor is safe to run unmodified
+   alongside Wi-Fi, and BT still sleeps normally once `wlan0` is down.
+   Do **not** force `'0 0'` by hand for Wi-Fi any more: that clears
+   `gPsEnable` globally and stops BT sleeping for the rest of the session.
 
 Additionally, chip-initiated wakes (BGF EINT) must be answered with the
 `HOST_AWAKE` command exchange, not the `WAKEUP` pulse — the stock remap in
@@ -212,8 +221,8 @@ windows (10 s → 360 s) and stops at the first failure.
 - BT and Wi-Fi do run together (verified: a full BT inquiry alongside a
   25-packet ping, 0% loss, no assert), but the inquiry monopolises the
   shared MT6627N front end in bursts — round-trip average went from ~5 ms
-  to ~80 ms with a 400 ms worst case. Force PSM off first; the governor
-  still cannot see Wi-Fi.
+  to ~80 ms with a 400 ms worst case. The BT governor can be left running:
+  the keep-awake reference stops it sleeping the chip under Wi-Fi.
 
 ## Origins and license
 

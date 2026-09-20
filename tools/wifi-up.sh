@@ -2,9 +2,10 @@
 # One-shot Wi-Fi bring-up on MT6572 mainline (run from /root/connsys).
 # Prereq: connsys-up.sh ran first (btif+wmt loaded, launcher resident).
 #
-# Keep PSM OFF for all Wi-Fi work: the PSM governor lives in the BT vhci
-# bridge and is blind to Wi-Fi traffic — a WMT SLEEP landing during a long
-# RF operation kills the firmware. Do not start the bridge in Wi-Fi sessions.
+# PSM needs no special handling here: wlan_gen2 takes a keep-awake reference
+# in wlanOpen() and drops it in wlanStop(), and the WMT core refuses to
+# enable sleep while any reference is held. Do not force '0 0' here - that
+# clears gPsEnable globally and stops BT sleeping after a Wi-Fi session.
 cd /root/connsys || exit 1
 
 lsmod | grep -q mtk_stp_wmt_soc || { echo "run connsys-up.sh first"; exit 1; }
@@ -24,9 +25,6 @@ lsmod | grep -q mtk_wmt_wifi_soc || insmod mtk_wmt_wifi_soc.ko || exit 1
 lsmod | grep -q '^cfg80211' || insmod wifi/cfg80211.ko || exit 1
 lsmod | grep -q wlan_gen2 || insmod wifi/wlan_gen2.ko || exit 1
 echo "wlan modules loaded"
-
-# re-assert PSM off before touching the radio
-echo '0 0' > /proc/driver/wmt_dbg
 
 # func-on: WIFI PALDO -> WMT patch -> wlan probe -> RAM code -> wlan0
 echo 1 > /dev/wmtWifi
