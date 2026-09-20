@@ -1262,6 +1262,9 @@ BOOLEAN wlanIsLaunched(VOID);
 
 VOID wlanUpdateChannelTable(P_GLUE_INFO_T prGlueInfo);
 
+/* Note Wi-Fi datapath activity for the CONSYS keep-awake idle gate. */
+VOID wlanPsmNoteActivity(VOID);
+
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************

@@ -1898,6 +1898,9 @@ int wlanHardStartXmit(struct sk_buff *prSkb, struct net_device *prDev)
 	ASSERT(prSkb);
 	ASSERT(prDev);
 	ASSERT(prGlueInfo);
+
+	/* Defer the chip sleeping while the datapath is moving frames. */
+	wlanPsmNoteActivity();
 	prGlueInfo->u8SkbToDriver++;
 
 #if (CFG_SUPPORT_TDLS_DBG == 1)
@@ -2128,19 +2131,89 @@ static void wlanUninit(struct net_device *prDev)
 * \retval < 0   The execution of wlanOpen failed.
 */
 /*----------------------------------------------------------------------------*/
+/*
+ * Wi-Fi side idle notion for the CONSYS keep-awake. The WMT idle timer only
+ * watches BTIF traffic, which the Wi-Fi datapath never touches, so holding
+ * the chip awake for the whole session was the safe answer - at the cost of
+ * never sleeping on an associated but quiet link. Hold only while Wi-Fi
+ * needs it: recent traffic, an outstanding scan, or a link still coming up
+ * (scan and join are long RF operations with no host traffic of their own).
+ *
+ * Evaluated on a workqueue, not a timer: mtk_wcn_wmt_psm_hold() reaches
+ * osal_timer_stop_sync(), which must not run from softirq.
+ */
+#define WIFI_PSM_POLL_MS	250
+
+static unsigned int wifi_psm_idle_ms = 500;
+module_param(wifi_psm_idle_ms, uint, 0644);
+MODULE_PARM_DESC(wifi_psm_idle_ms,
+		 "idle time before the CONSYS chip may sleep with Wi-Fi up, in ms (0 = never sleep)");
+
+static unsigned long g_ulWifiPsmLastAct;
+static bool g_fgWifiPsmHeld;
+static P_GLUE_INFO_T g_prWifiPsmGlue;
+static struct delayed_work g_rWifiPsmWork;
+
+VOID wlanPsmNoteActivity(VOID)
+{
+	WRITE_ONCE(g_ulWifiPsmLastAct, jiffies);
+}
+
+static bool wlanPsmBusy(P_GLUE_INFO_T prGlueInfo)
+{
+	if (wifi_psm_idle_ms == 0)
+		return true;
+
+	if (prGlueInfo->prScanRequest != NULL)
+		return true;
+
+	if (prGlueInfo->eParamMediaStateIndicated != PARAM_MEDIA_STATE_CONNECTED)
+		return true;
+
+	return time_before(jiffies,
+			   READ_ONCE(g_ulWifiPsmLastAct) +
+			   msecs_to_jiffies(wifi_psm_idle_ms));
+}
+
+static void wlanPsmIdleWork(struct work_struct *work)
+{
+	P_GLUE_INFO_T prGlueInfo = g_prWifiPsmGlue;
+	bool fgBusy;
+
+	if (!prGlueInfo)
+		return;
+
+	fgBusy = wlanPsmBusy(prGlueInfo);
+
+	if (fgBusy && !g_fgWifiPsmHeld) {
+		mtk_wcn_wmt_psm_hold();
+		g_fgWifiPsmHeld = true;
+	} else if (!fgBusy && g_fgWifiPsmHeld) {
+		mtk_wcn_wmt_psm_release();
+		g_fgWifiPsmHeld = false;
+	}
+
+	schedule_delayed_work(&g_rWifiPsmWork,
+			      msecs_to_jiffies(WIFI_PSM_POLL_MS));
+}
+
 static int wlanOpen(struct net_device *prDev)
 {
+	P_GLUE_INFO_T prGlueInfo = NULL;
+
 	ASSERT(prDev);
 
-	/*
-	 * Hold the chip awake for as long as the interface is up. The WMT
-	 * power-save idle timer only watches BTIF transport traffic, and the
-	 * Wi-Fi datapath never goes near BTIF - it runs over the CONSYS AHB
-	 * HIF - so from the timer's point of view an actively transferring
-	 * Wi-Fi link looks completely idle. A WMT SLEEP landing in the middle
-	 * of an RF operation takes the firmware down with it.
-	 */
+	prGlueInfo = *((P_GLUE_INFO_T *) netdev_priv(prDev));
+
+	/* Come up held; the idle worker hands control back once Wi-Fi is quiet. */
+	g_prWifiPsmGlue = prGlueInfo;
+	wlanPsmNoteActivity();
 	mtk_wcn_wmt_psm_hold();
+	g_fgWifiPsmHeld = true;
+
+	INIT_DELAYED_WORK(&g_rWifiPsmWork, wlanPsmIdleWork);
+	schedule_delayed_work(&g_rWifiPsmWork,
+			      msecs_to_jiffies(WIFI_PSM_POLL_MS));
 
 	netif_tx_start_all_queues(prDev);
 
@@ -2185,7 +2258,13 @@ static int wlanStop(struct net_device *prDev)
 	netif_tx_stop_all_queues(prDev);
 
 	/* Interface is down - let the configured PSM policy resume. */
-	mtk_wcn_wmt_psm_release();
+	/* Clear the context first so an in-flight worker bails out early. */
+	g_prWifiPsmGlue = NULL;
+	cancel_delayed_work_sync(&g_rWifiPsmWork);
+	if (g_fgWifiPsmHeld) {
+		mtk_wcn_wmt_psm_release();
+		g_fgWifiPsmHeld = false;
+	}
 
 	return 0;		/* success */
 }				/* end of wlanStop() */

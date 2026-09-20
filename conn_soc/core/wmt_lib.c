@@ -497,7 +497,7 @@ INT32 wmt_lib_ps_enable(VOID)
 INT32 mtk_wcn_wmt_psm_hold(VOID)
 {
 	if (atomic_inc_return(&gPsHold) == 1) {
-		pr_info("wmt: keep-awake taken, forcing PSM off\n");
+		pr_info_ratelimited("wmt: keep-awake taken, forcing PSM off\n");
 		mtk_wcn_stp_psm_disable();
 	}
 	return 0;
@@ -514,7 +514,7 @@ INT32 mtk_wcn_wmt_psm_release(VOID)
 		return -1;
 	}
 	if (left == 0) {
-		pr_info("wmt: keep-awake dropped, PSM back under policy\n");
+		pr_info_ratelimited("wmt: keep-awake dropped, PSM back under policy\n");
 		wmt_lib_ps_enable();
 	}
 	return 0;

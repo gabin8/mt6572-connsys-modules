@@ -1459,6 +1459,9 @@ WLAN_STATUS kalRxIndicatePkts(IN P_GLUE_INFO_T prGlueInfo, IN PVOID apvPkts[], I
 	UINT_32 i;
 #endif
 
+	/* Defer the chip sleeping while the datapath is moving frames. */
+	wlanPsmNoteActivity();
+
 	for (ucIdx = 0; ucIdx < ucPktNum; ucIdx++) {
 		prSkb = apvPkts[ucIdx];
 #if DBG
