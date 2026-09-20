@@ -18,7 +18,7 @@ out-of-tree modules in the spirit of
 | BTIF transport (PIO + APDMA) | working, loopback-verified |
 | WMT/STP control plane, firmware download | working |
 | Bluetooth (`/dev/stpbt` → BlueZ `hci0`) | working — pairing, HID keyboard, inbound reconnect |
-| Power management (PSM / chip sleep) | working (see [PSM](#power-management-psm)) |
+| Power management (PSM / chip sleep) | working — sleeps on an idle link with BT and Wi-Fi up (see [PSM](#power-management-psm)) |
 | WiFi (`wlan/` gen2 driver → cfg80211 `wlan0`) | working — scan, WPA2-PSK association, DHCP, traffic |
 | BT + WiFi together | working — inquiry alongside traffic, no assert; costs Wi-Fi latency |
 | GPS / FM | not started |
@@ -37,7 +37,7 @@ silicon.
 - The **WMT/STP** layer multiplexes BT/GPS/FM/WMT channels over BTIF, and
   downloads the firmware patch at function-on.
 - Char devices: `/dev/stpwmt` (control, major 190), `/dev/stpbt` (BT HCI,
-  major 192, single-open), `/dev/wmtWifi` (WiFi func ctrl, major 155).
+  major 192), `/dev/wmtWifi` (WiFi func ctrl, major 155).
 
 ## Kernel prerequisites
 
@@ -141,8 +141,8 @@ Run at boot (`tools/S99bt`) or by hand:
 3. `tools/wifi-up.sh` — Wi-Fi: insmods `cfg80211` + `wlan_gen2`,
    function-on via `/dev/wmtWifi`, waits for `wlan0`. Then the usual
    `iw` / `wpa_supplicant -D nl80211` / `udhcpc` flow. PSM needs no
-   manual handling: the driver holds a keep-awake reference while the
-   interface is up.
+   manual handling: the driver holds a keep-awake reference whenever Wi-Fi
+   is busy and lets the chip sleep when it is not.
 
 Pairing a classic HID keyboard end-to-end is documented in
 `tools/kbd-pair.md`.
@@ -168,14 +168,17 @@ place — each was a hard-won fix, see the commit history:
    from a connected keyboard) wakes the host through the BGF EINT +
    HOST_AWAKE exchange.
 
-4. **Wi-Fi holds a keep-awake reference.** The bridge's governor watches
-   the HCI stream and is blind to Wi-Fi — the Wi-Fi datapath runs over the
-   CONSYS AHB HIF and never touches BTIF, so an actively transferring link
-   looks idle to it. `wlan_gen2` therefore calls
-   `mtk_wcn_wmt_psm_hold()` in `wlanOpen()` and `mtk_wcn_wmt_psm_release()`
-   in `wlanStop()`, and `wmt_lib_ps_enable()` refuses to enable sleep while
-   any reference is held — so the BT governor is safe to run unmodified
-   alongside Wi-Fi, and BT still sleeps normally once `wlan0` is down.
+4. **Wi-Fi holds a keep-awake reference while it needs one.** The bridge's
+   governor watches the HCI stream and is blind to Wi-Fi — the Wi-Fi
+   datapath runs over the CONSYS AHB HIF and never touches BTIF, so an
+   actively transferring link looks idle to it. `wlan_gen2` keeps its own
+   idle notion and holds a reference while the datapath moved a frame
+   recently, while a scan is outstanding, and until the link is
+   established; `wmt_lib_ps_enable()` refuses to enable sleep while any
+   reference is held. The chip therefore sleeps on an associated but quiet
+   link and the BT governor stays safe unmodified. `wifi_psm_idle_ms`
+   (module parameter, writable at runtime) sets the idle window, default
+   500 ms; `0` restores the old always-awake behaviour.
    Do **not** force `'0 0'` by hand for Wi-Fi any more: that clears
    `gPsEnable` globally and stops BT sleeping for the rest of the session.
 
@@ -196,7 +199,7 @@ windows (10 s → 360 s) and stops at the first failure.
 | `wifi-up.sh` | Wi-Fi bring-up: wlan modules, func-on, waits for `wlan0` |
 | `stpbt-vhci-bridge.c` | `/dev/stpbt` ↔ `/dev/vhci` pump (creates `hci0`), H4 reframing, firmware quirk shims, PSM governor |
 | `launcher/stp_uart_launcher.c` | resident WMT launcher (`-m 3` = BTIF mode): firmware download + handshake |
-| `btif-lpbk-test.c` | BTIF DMA loopback test (non-blocking; safe on the single-open device) |
+| `btif-lpbk-test.c` | BTIF DMA loopback test (non-blocking) |
 | `stpbt-hci-test.c` | HCI reset smoke test over `/dev/stpbt` |
 | `hci-localver.c` | HCI Read Local Version over `/dev/stpbt` |
 | `btup-scan.c` | minimal inquiry scan over `hci0` |
@@ -208,8 +211,9 @@ windows (10 s → 360 s) and stops at the first failure.
 
 ## Operational notes
 
-- `/dev/stpbt` is **single-open** and a blocking read from a shell wedges
-  the console; use the provided non-blocking tools.
+- `/dev/stpbt` may be opened more than once — the BT function is
+  refcounted, so it stays on until the last close. A blocking read from a
+  shell still wedges the console; use the provided non-blocking tools.
 - Never `rmmod mtk_stp_wmt_soc` — it hangs uninterruptibly; reboot instead.
 - A crashed radio ("evt err trigger assert fail, do chip reset to recovery"
   in dmesg) comes back half-alive: HCI answers but outbound paging is dead.
@@ -227,9 +231,11 @@ windows (10 s → 360 s) and stops at the first failure.
   `00:08:22:xx:xx:xx` MAC — with the files plainly present on disk.
 - BT and Wi-Fi do run together (verified: a full BT inquiry alongside a
   25-packet ping, 0% loss, no assert), but the inquiry monopolises the
-  shared MT6627N front end in bursts — round-trip average went from ~5 ms
-  to ~80 ms with a 400 ms worst case. The BT governor can be left running:
-  the keep-awake reference stops it sleeping the chip under Wi-Fi.
+  shared MT6627N front end in bursts — round-trip average went from ~20 ms
+  to ~100 ms with a ~390 ms worst case, measured with the chip still
+  sleeping 19 times during the inquiry. That cost is the hardware, not this
+  stack: stock Android on the same board shows ~517 ms average and 1.1 s
+  worst case under the same load.
 
 ## Origins and license
 
