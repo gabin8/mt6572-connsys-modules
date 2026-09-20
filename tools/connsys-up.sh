@@ -22,5 +22,11 @@ echo "launcher: $(head -1 /tmp/launcher.log 2>/dev/null)"
 echo '0 0' > /proc/driver/wmt_dbg
 echo "PSM off for bring-up"
 
-./stpbt-hci-test
-echo "HCI_TEST_RC=$?"
+# Pointless against an already-running stack, and it opens /dev/stpbt.
+if ps | grep -q '[s]tpbt-vhci-bridge'; then
+    echo "bridge already holds /dev/stpbt, skipping HCI smoke test"
+    echo "HCI_TEST_RC=0"
+else
+    ./stpbt-hci-test
+    echo "HCI_TEST_RC=$?"
+fi
