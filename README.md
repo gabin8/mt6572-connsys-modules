@@ -19,7 +19,7 @@ out-of-tree modules in the spirit of
 | WMT/STP control plane, firmware download | working |
 | Bluetooth (`/dev/stpbt` → BlueZ `hci0`) | working — pairing, HID keyboard, inbound reconnect |
 | Power management (PSM / chip sleep) | working — sleeps on an idle link with BT and Wi-Fi up (see [PSM](#power-management-psm)) |
-| WiFi (`wlan/` gen2 driver → cfg80211 `wlan0`) | working — scan, WPA2-PSK association, DHCP, ~34 Mbit/s TCP down |
+| WiFi (`wlan/` gen2 driver → cfg80211 `wlan0`) | working — scan, WPA2-PSK association, DHCP, ~34/22 Mbit/s TCP down/up |
 | BT + WiFi together | working — inquiry alongside traffic, no assert; costs Wi-Fi latency |
 | GPS / FM | not started |
 
@@ -233,11 +233,12 @@ windows (10 s → 360 s) and stops at the first failure.
   `wmt_dev_patch_get ... fail, iRet(-2)` then `BT_open: WMT turn on BT
   fail!`, or `[nvram_read] : failed to open!!` followed by a random
   `00:08:22:xx:xx:xx` MAC — with the files plainly present on disk.
-- Wi-Fi throughput is ~34 Mbit/s TCP downlink (HTTP to /dev/null, 2.4 GHz
-  HT20, 65 Mbit/s PHY, -56 dBm), at 22% CPU across both cores - so the
-  radio is the limit, not the SoC. The idle-gated keep-awake costs nothing
-  measurable: interleaved runs with `wifi_psm_idle_ms` 0 and 500 are within
-  noise of each other. Uplink is unmeasured.
+- Wi-Fi throughput is ~34 Mbit/s TCP down and ~22 Mbit/s up (2.4 GHz HT20,
+  65 Mbit/s PHY, -56 dBm), at 22% CPU across both cores - so the radio is
+  the limit, not the SoC. Uplink was measured with a raw TCP sender because
+  busybox wget's --post-file sends a zero-length body in this build. The
+  idle-gated keep-awake costs nothing measurable: interleaved runs with
+  `wifi_psm_idle_ms` 0 and 500 are within noise of each other.
 - BT and Wi-Fi do run together (verified: a full BT inquiry alongside a
   25-packet ping, 0% loss, no assert), but the inquiry monopolises the
   shared MT6627N front end in bursts — round-trip average went from ~20 ms
