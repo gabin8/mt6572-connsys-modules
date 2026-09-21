@@ -246,6 +246,9 @@ int mtk_cfg80211_set_default_mgmt_key(struct wiphy *wiphy, struct wireless_dev *
 
 int mtk_cfg80211_get_station(struct wiphy *wiphy, struct wireless_dev *wdev, const u8 *mac, struct station_info *sinfo);
 
+int mtk_cfg80211_dump_station(struct wiphy *wiphy, struct wireless_dev *wdev,
+			      int idx, u8 *mac, struct station_info *sinfo);
+
 int mtk_cfg80211_add_station(struct wiphy *wiphy, struct wireless_dev *wdev,
 				const u8 *mac, struct station_parameters *params);
 

@@ -889,6 +889,7 @@ static struct cfg80211_ops mtk_wlan_ops = {
 	.set_default_key = mtk_cfg80211_set_default_key,
 	.set_default_mgmt_key = mtk_cfg80211_set_default_mgmt_key,
 	.get_station = mtk_cfg80211_get_station,
+	.dump_station = mtk_cfg80211_dump_station,
 	.change_station = mtk_cfg80211_change_station,
 	.add_station = mtk_cfg80211_add_station,
 	.del_station = mtk_cfg80211_del_station,
