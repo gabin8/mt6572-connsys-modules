@@ -33,6 +33,10 @@
 
 #define STP_PRIME_DRAIN_MS 4000
 
+/* LE Connection Complete, Advertising Report, Connection Update Complete,
+ * Read Remote Features Complete, Long Term Key Request. */
+#define LE_EVENT_MASK_MIN 0x1f
+
 /* ---------------- PSM governor ---------------- */
 static int psm_state = -1;	/* -1 unknown, 0 held off, 1 on (sleep allowed) */
 static int outstanding;		/* HCI cmds without Command Complete/Status */
@@ -423,6 +427,28 @@ int main(void)
 					cc[7]);
 				w = write(vh, cc, sizeof(cc));
 				continue;
+			}
+			/* The firmware reports no LE commands at all in Read
+			 * Local Supported Commands - 135 entries, none of them
+			 * LE - even though every LE command the core issues
+			 * works. The core builds the LE event mask from that
+			 * bitmap and ends up enabling only LE Long Term Key
+			 * Request, so advertising reports and LE Connection
+			 * Complete are masked off and BLE silently never works:
+			 * scans return nothing, forever, with no error anywhere.
+			 *
+			 * Widen the mask to the bits the controller does accept
+			 * (verified: 0x1f is accepted, all-ones is rejected with
+			 * Unsupported LMP Parameter Value). With this, LE scans
+			 * return advertising reports and BLE HID devices pair
+			 * and connect.
+			 */
+			if (n >= 12 && buf[0] == 0x01 && buf[1] == 0x01 &&
+			    buf[2] == 0x20 &&
+			    (buf[4] & LE_EVENT_MASK_MIN) != LE_EVENT_MASK_MIN) {
+				fprintf(stderr, "widening LE event mask 0x%02x -> 0x%02x\n",
+					buf[4], buf[4] | LE_EVENT_MASK_MIN);
+				buf[4] |= LE_EVENT_MASK_MIN;
 			}
 			classify_tx(buf, n);
 			w = write(bt, buf, n);
