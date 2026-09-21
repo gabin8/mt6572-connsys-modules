@@ -434,21 +434,24 @@ int mtk_cfg80211_get_station(struct wiphy *wiphy, struct wireless_dev *wdev, con
 			prGlueInfo->i4RssiCache = i4Rssi;
 		}
 		sinfo->rx_packets = prGlueInfo->rNetDevStats.rx_packets;
+		sinfo->filled |= BIT(NL80211_STA_INFO_RX_PACKETS);
 
 		/* 4. Fill Tx OK and Tx Bad */
-
-		sinfo->filled |= BIT(NL80211_STA_INFO_TX_PACKETS);
-		sinfo->filled |= BIT(NL80211_STA_INFO_TX_FAILED);
 		{
 			WLAN_STATUS rStatus;
 
 			kalMemZero(&rStatistics, sizeof(rStatistics));
-			/* Get Tx OK/Fail cnt from AIS statistic counter */
+			/*
+			 * Plain GET_STATISTICS, not the poor-link variant: this
+			 * firmware does not answer CMD_ID_GET_STATISTICS_PL and
+			 * the query just fails.
+			 */
 			rStatus = kalIoctl(prGlueInfo,
-					   wlanoidQueryStatisticsPL,
+					   wlanoidQueryStatistics,
 					   &rStatistics, sizeof(rStatistics), TRUE, TRUE, TRUE, FALSE, &u4BufLen);
 
 			if (rStatus != WLAN_STATUS_SUCCESS) {
+				/* Leave the counters unclaimed rather than reporting zeroes. */
 				DBGLOG(REQ, WARN, "unable to retrieive statistic\n");
 			} else {
 				INT_32 i4RssiThreshold = -85;	/* set rssi threshold -85dBm */
@@ -482,6 +485,8 @@ int mtk_cfg80211_get_station(struct wiphy *wiphy, struct wireless_dev *wdev, con
 
 				sinfo->tx_packets = prGlueInfo->rNetDevStats.tx_packets;
 				sinfo->tx_failed = prGlueInfo->rNetDevStats.tx_errors;
+				sinfo->filled |= BIT(NL80211_STA_INFO_TX_PACKETS) |
+						 BIT(NL80211_STA_INFO_TX_FAILED);
 				/* Good Fail Bad Difference retry difference Linkspeed Rate Weighted */
 				DBGLOG(REQ, TRACE,
 					"Poorlink State TxOK(%d) TxFail(%d) Bad(%d) Retry(%d)",
@@ -500,6 +505,37 @@ int mtk_cfg80211_get_station(struct wiphy *wiphy, struct wireless_dev *wdev, con
 
 	}
 	return 0;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief cfg80211 dump_station handler. A station interface has exactly one
+ *        peer - the AP it is joined to - so index 0 reports it and anything
+ *        beyond ends the dump.
+ */
+/*----------------------------------------------------------------------------*/
+int mtk_cfg80211_dump_station(struct wiphy *wiphy, struct wireless_dev *wdev,
+			      int idx, u8 *mac, struct station_info *sinfo)
+{
+	P_GLUE_INFO_T prGlueInfo = NULL;
+	PARAM_MAC_ADDRESS arBssid;
+	UINT_32 u4BufLen;
+
+	prGlueInfo = (P_GLUE_INFO_T) wiphy_priv(wiphy);
+	ASSERT(prGlueInfo);
+
+	if (idx != 0)
+		return -ENOENT;
+
+	if (prGlueInfo->eParamMediaStateIndicated != PARAM_MEDIA_STATE_CONNECTED)
+		return -ENOENT;
+
+	kalMemZero(arBssid, MAC_ADDR_LEN);
+	wlanQueryInformation(prGlueInfo->prAdapter, wlanoidQueryBssid,
+			     &arBssid[0], sizeof(arBssid), &u4BufLen);
+	COPY_MAC_ADDR(mac, arBssid);
+
+	return mtk_cfg80211_get_station(wiphy, wdev, mac, sinfo);
 }
 
 /*----------------------------------------------------------------------------*/
