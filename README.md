@@ -17,7 +17,7 @@ out-of-tree modules in the spirit of
 |---|---|
 | BTIF transport (PIO + APDMA) | working, loopback-verified |
 | WMT/STP control plane, firmware download | working |
-| Bluetooth (`/dev/stpbt` → BlueZ `hci0`) | working — pairing, HID keyboard, inbound reconnect; connected links are held out of sniff (see [kbd-pair.md](tools/kbd-pair.md)) |
+| Bluetooth (`/dev/stpbt` → BlueZ `hci0`) | working — pairing, BR/EDR HID keyboard + BLE HID mouse together, inbound reconnect (see [kbd-pair.md](tools/kbd-pair.md)) |
 | Power management (PSM / chip sleep) | working — sleeps on an idle link with BT and Wi-Fi up (see [PSM](#power-management-psm)) |
 | WiFi (`wlan/` gen2 driver → cfg80211 `wlan0`) | working — scan, WPA2-PSK association, DHCP, station stats, ~34/22 Mbit/s TCP down/up |
 | BT + WiFi together | working — inquiry alongside traffic, no assert; costs Wi-Fi latency |
@@ -209,6 +209,7 @@ windows (10 s → 360 s) and stops at the first failure.
 | `hci-localver.c` | HCI Read Local Version over `/dev/stpbt` |
 | `btup-scan.c` | minimal inquiry scan over `hci0` |
 | `fbcursor.c` | draws a cursor on `/dev/fb0` from an evdev pointer - checks a BT mouse end to end with no display server |
+| `evrep.c` | sets the evdev autorepeat delay/period (BT HID keyboards need a longer delay, see [kbd-pair.md](tools/kbd-pair.md)) |
 | `psm-sleep-probe.sh` | PSM deep-sleep wake threshold probe |
 | `connsys-regdump.sh` | CONSYS-related register dump (devmem) |
 | `build-staged-modules.sh` | rebuild the staged mainline modules (cfg80211, BT/HID set) from a kernel tree |
