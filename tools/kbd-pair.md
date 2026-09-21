@@ -1,9 +1,9 @@
-# Genius Mini LuxePad pairing runbook (classic BT HID)
+# BT keyboard pairing runbook (classic BT HID)
 
-**VERIFIED WORKING 2026-07-21** — full chain: pair (legacy PIN) -> bond ->
-connect -> uhid input device -> keystrokes on /dev/input/eventN.
+**VERIFIED WORKING** — full chain: pair -> bond -> connect -> HID input
+device -> keystrokes on /dev/input/eventN. Devices and dates below.
 
-Two root causes explained every earlier failure; both must be avoided:
+Three root causes explained every earlier failure; all must be avoided:
 
 1. **A crashed radio must be rebooted, never retried.** PSM is now managed
    automatically (off during bring-up, governed by the vhci bridge at
@@ -17,6 +17,16 @@ Two root causes explained every earlier failure; both must be avoided:
    below). Watch for `Bonded: yes` in bluetoothctl — `Paired: yes` alone is
    NOT enough; a pairing on a degraded radio can "succeed" without storing a
    LinkKey, and then every HID connect is rejected/reset as un-bonded.
+3. **BlueZ must carry the input plugin.** The 2026-07-21 run above used the
+   hand-built stack in `/opt/bt`, which had it. A buildroot rootfs does not
+   unless `BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_HID=y` (and `_HOG=y` for BLE
+   peripherals) are set. Without it pairing still succeeds and then
+   `connect` fails with `br-connection-profile-unavailable`, which reads
+   like a radio fault but is purely a missing profile. Check with
+   `bluetoothd -n -d` — the log must say `add_plugin() Loading input plugin`
+   and register `profile input-hid`. `make bluez5_utils-reconfigure` is not
+   enough to pick the option up; the builtin plugin table is generated into
+   `src/builtin.h`, so a `dirclean` + full rebuild is required.
 
 On-device sequence once modules + BlueZ rootfs are in place.
 
@@ -72,11 +82,30 @@ Verified result 2026-07-21: `Genius Mini LuxePad Keyboard` on
 `/devices/virtual/misc/uhid/0005:05AC:023C.0001`, Handlers `sysrq kbd leds
 event5`, clean press/release events for every key.
 
+## Verified devices
+
+| Device | Date | Pairing | Result |
+| --- | --- | --- | --- |
+| Genius Mini LuxePad | 2026-07-21 | legacy PIN | `/opt/bt` BlueZ, event5, clean press/release |
+| Logitech K380 | 2026-09-21 | SSP passkey | buildroot BlueZ + input plugin, `hid-generic 0005:046D:B342`, event5, 118/118 press/release |
+
+The K380 shows an SSP passkey (the host displays six digits, you type them
+on the keyboard and press Enter) despite reporting `LegacyPairing: yes`.
+The window is short, so the digits must be in front of whoever is typing:
+driving it over a slow link and relaying them by hand times out with
+`AuthenticationCanceled` and a `disconnected with reason 3` from the remote.
+Writing the passkey to `/dev/tty0` as soon as it appears solves that — the
+panel is next to the keyboard.
+
 ## Notes / likely snags
 - Classic HID keyboards use SSP with a passkey the HOST shows and the USER
   types on the keyboard, then Enter. The `KeyboardDisplay` agent handles it.
 - If `connect` fails after `pair`: the ACL/L2CAP data path is the unproven
   part — watch the bridge log and dmesg for STP/BTIF errors or new firmware
   quirks the vhci bridge needs to shim.
-- PSM stays OFF (connsys-up.sh does it) so the link never sleeps mid-session.
+- PSM stays OFF during bring-up (connsys-up.sh does it); at runtime the
+  bridge governs it and lets idle ACL links sleep. Measured on the K380 that
+  costs ~20 ms on the first keystroke after a sleep (median hold 130 ms after
+  an idle gap >1.5 s vs 107 ms while typing) and loses nothing: 118 presses,
+  118 releases over a 60 s sample.
 - Keep the phone on charge — pairing is a longer session.
