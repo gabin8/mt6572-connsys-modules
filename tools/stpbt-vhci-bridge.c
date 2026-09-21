@@ -5,6 +5,12 @@
 // opening /dev/vhci creates hci0 after the driver's 1s auto-setup, then
 // every H4 packet is pumped verbatim in both directions.
 //
+// Between the two the STP BT channel is primed with a throwaway HCI_Reset
+// (see prime_stp): the first command after function-on draws an STP
+// retransmit and so executes twice, and the late duplicate completion must
+// be absorbed before the BT core owns an adapter, or its setup desyncs and
+// the adapter comes up unable to report inquiry results.
+//
 // The bridge also governs WMT PSM via /proc/driver/wmt_dbg: the CONSYS
 // firmware dies if a WMT SLEEP lands mid-inquiry/page, and those RF ops
 // carry no STP traffic for the PSM idle timer to notice. PSM is held off
@@ -24,6 +30,8 @@
 #include <errno.h>
 #include <string.h>
 #include <time.h>
+
+#define STP_PRIME_DRAIN_MS 4000
 
 /* ---------------- PSM governor ---------------- */
 static int psm_state = -1;	/* -1 unknown, 0 held off, 1 on (sleep allowed) */
@@ -239,6 +247,42 @@ static void set_bdaddr(int bt)
 		(n >= 7 && rsp[6] == 0) ? "ok" : "error");
 }
 
+/* The first HCI command after BT function-on is not acked by the chip in
+ * time: STP hits its tx timeout and retransmits, the controller then runs
+ * the command twice and a duplicate Command Complete turns up ~2.5 s later.
+ * Landing after /dev/vhci exists, that completion is for a command the BT
+ * core has already retired ("unexpected event for opcode ..."), which
+ * desyncs its setup sequence - the adapter ends up inquiring but never
+ * reporting results, indistinguishable from a dead scan.
+ *
+ * Spend that window on a throwaway HCI_Reset of our own, while the core
+ * still has no adapter to initialise, and drain past the retransmit so the
+ * duplicate is consumed here.
+ */
+static void prime_stp(int bt)
+{
+	static const unsigned char reset[] = { 0x01, 0x03, 0x0c, 0x00 };
+	unsigned char rsp[256];
+	long deadline;
+	int n, chunks = 0;
+
+	if (write(bt, reset, sizeof(reset)) != (int)sizeof(reset)) {
+		perror("prime write");
+		return;
+	}
+
+	deadline = now_ms() + STP_PRIME_DRAIN_MS;
+	while (now_ms() < deadline) {
+		n = read(bt, rsp, sizeof(rsp));
+		if (n > 0) {
+			chunks++;
+			continue;
+		}
+		usleep(20 * 1000);
+	}
+	fprintf(stderr, "stp primed, %d event chunk(s) absorbed\n", chunks);
+}
+
 int main(void)
 {
 	unsigned char buf[2048];
@@ -260,14 +304,17 @@ int main(void)
 		fprintf(stderr, "drained %d stale bytes\n", n);
 
 	set_bdaddr(bt);
+	prime_stp(bt);
 
 	vh = open("/dev/vhci", O_RDWR);
 	if (vh < 0) {
 		perror("open /dev/vhci");
 		return 1;
 	}
-	sleep(2);	/* let vhci auto-create the BR/EDR hci device */
-	fprintf(stderr, "vhci open, hci device created - pumping\n");
+	/* Pump straight away: the hci device appears ~1 s later and the core
+	 * starts issuing setup commands the moment it does, so anything that
+	 * delays forwarding here shows up as HCI command timeouts. */
+	fprintf(stderr, "vhci open - pumping\n");
 
 	for (;;) {
 		struct pollfd p[2] = {
