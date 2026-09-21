@@ -136,6 +136,23 @@ static void classify_rx(const unsigned char *b, int n)
 		if (acl_links > 0)
 			acl_links--;
 		break;
+	case 0x2e:				/* Sniff Subrating */
+		if (n >= 13)
+			fprintf(stderr, "sniff subrating: handle=%u max_tx_lat=%u max_rx_lat=%u (%u ms) "
+				"min_remote_to=%u min_local_to=%u\n",
+				b[4] | (b[5] << 8), b[6] | (b[7] << 8),
+				b[8] | (b[9] << 8), ((b[8] | (b[9] << 8)) * 625) / 1000,
+				b[10] | (b[11] << 8), b[12] | (b[13] << 8));
+		break;
+	case 0x14:				/* Mode Change */
+		if (n >= 9) {
+			unsigned iv = b[7] | (b[8] << 8);
+
+			fprintf(stderr, "mode change: handle=%u mode=%u interval=%u (%u.%u ms)\n",
+				b[4] | (b[5] << 8), b[6], iv,
+				iv * 625 / 1000, (iv * 625 / 100) % 10);
+		}
+		break;
 	case 0x07:				/* Remote Name Request Complete */
 		rf_deadline = 0;
 		break;
@@ -167,7 +184,42 @@ static int h4_pkt_len(const unsigned char *p, int len)
 	}
 }
 
-static void pump_to_vhci(int vh)
+/* Keep this link out of sniff mode.
+ *
+ * In sniff the peripheral only transmits on anchor points, and the keyboard
+ * here skips 20-40 of them: an inbound key-up can wait ~500 ms and then
+ * arrive in a burst with whatever queued behind it. Past the input layer's
+ * 250 ms autorepeat threshold the kernel decides the key is held and repeats
+ * it, so typing "cat" comes out as "caaaaaaat".
+ *
+ * Capping subrating does not help - HCI_Sniff_Subrating's Max_Latency bounds
+ * what the LOCAL device transmits, not what the peripheral does, so it
+ * constrains the wrong direction (measured: no change, still 512 ms stalls
+ * on a 12.5 ms grid). Clearing the sniff bit makes the controller refuse the
+ * peripheral's sniff request, the link stays active, and the stalls go away
+ * entirely (196 keystrokes, no hold over 250 ms).
+ *
+ * The cost is that a connected link no longer sniffs, which spends radio
+ * time on both ends. It applies only while something is connected, and chip
+ * PSM is governed separately and unaffected.
+ */
+#define LINK_POLICY_ROLE_SWITCH	0x0001	/* no sniff, no hold, no park */
+
+static void disable_sniff(int bt, unsigned handle)
+{
+	unsigned char cmd[8] = {
+		0x01, 0x0d, 0x08, 0x04,		/* HCI_Write_Link_Policy, plen 4 */
+		handle & 0xff, (handle >> 8) & 0xff,
+		LINK_POLICY_ROLE_SWITCH & 0xff, LINK_POLICY_ROLE_SWITCH >> 8,
+	};
+
+	if (write(bt, cmd, sizeof(cmd)) != (int)sizeof(cmd))
+		perror("link policy write");
+	else
+		fprintf(stderr, "sniff disabled on handle %u\n", handle);
+}
+
+static void pump_to_vhci(int vh, int bt)
 {
 	int pl, w;
 
@@ -180,6 +232,19 @@ static void pump_to_vhci(int vh)
 		if (pl == 0 || acc_len < pl)	/* incomplete */
 			return;
 		classify_rx(acc, pl);
+		/* Connection Complete, status success: refuse sniff on this
+		 * link before the peripheral gets a chance to request it. */
+		if (acc[0] == 0x04 && acc[1] == 0x03 && pl >= 6 && acc[3] == 0x00)
+			disable_sniff(bt, acc[4] | (acc[5] << 8));
+		/* Completion for the command just above. The host never issued
+		 * it, so passing it on would retire whatever command the core
+		 * is actually waiting for - swallow it. */
+		if (acc[0] == 0x04 && acc[1] == 0x0e && pl >= 6 &&
+		    acc[4] == 0x0d && acc[5] == 0x08) {
+			memmove(acc, acc + pl, acc_len - pl);
+			acc_len -= pl;
+			continue;
+		}
 		if (acc[0] == 0x04 && acc[1] == 0x10) {
 			fprintf(stderr, "dropping hw-error evt 0x%02x (MTK quirk)\n",
 				acc[3]);
@@ -337,7 +402,7 @@ int main(void)
 					acc_len = 0;	/* overflow: reset */
 				memcpy(acc + acc_len, buf, n);
 				acc_len += n;
-				pump_to_vhci(vh);
+				pump_to_vhci(vh, bt);
 			}
 		}
 		if (p[1].revents & POLLIN) {		/* host -> radio */
