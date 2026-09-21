@@ -60,6 +60,16 @@ else
 	echo "         extract it from the stock NVRAM or Wi-Fi runs with a random MAC" >&2
 fi
 
+# Factory BD_ADDR. Without it the controller keeps the firmware default and
+# every board reports the same bogus address. Per-device, like the Wi-Fi blob.
+BDADDR_BLOB="${BDADDR_BLOB:-$M/tools/wifi-fw/nvram-BT_Addr}"
+if [ -f "$BDADDR_BLOB" ]; then
+	mkdir -p "$SD/etc/firmware/nvram"
+	cp "$BDADDR_BLOB" "$SD/etc/firmware/nvram/BT_Addr"
+else
+	echo "NOTE: no BT_Addr blob, BT keeps the firmware default address" >&2
+fi
+
 # Resident launcher + HCI smoke test. Both are gitignored build products, and
 # nothing else installs them — without the launcher connsys-up.sh cannot serve
 # patch info and BOTH BT and Wi-Fi are dead. Build them first (see README):

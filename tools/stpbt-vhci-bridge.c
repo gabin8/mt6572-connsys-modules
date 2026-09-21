@@ -187,6 +187,53 @@ static void pump_to_vhci(int vh)
 	}
 }
 
+#define BDADDR_NVRAM	"/etc/firmware/nvram/BT_Addr"
+
+/*
+ * The controller powers up on a firmware default address, so program the
+ * factory one from NVRAM before the core sees the device. MediaTek's setter
+ * is vendor opcode 0xfc1a taking the six address bytes as stored.
+ */
+static void set_bdaddr(int bt)
+{
+	unsigned char cmd[10] = { 0x01, 0x1a, 0xfc, 0x06 };
+	unsigned char rsp[64];
+	int fd, n, i;
+
+	fd = open(BDADDR_NVRAM, O_RDONLY);
+	if (fd < 0) {
+		fprintf(stderr, "no %s, keeping firmware default bdaddr\n",
+			BDADDR_NVRAM);
+		return;
+	}
+	n = read(fd, cmd + 4, 6);
+	close(fd);
+	if (n != 6) {
+		fprintf(stderr, "%s too short (%d), keeping default bdaddr\n",
+			BDADDR_NVRAM, n);
+		return;
+	}
+
+	if (write(bt, cmd, sizeof(cmd)) != sizeof(cmd)) {
+		perror("bdaddr write");
+		return;
+	}
+
+	for (i = 0; i < 50; i++) {
+		n = read(bt, rsp, sizeof(rsp));
+		if (n > 0)
+			break;
+		usleep(10 * 1000);
+	}
+	if (n <= 0) {
+		fprintf(stderr, "bdaddr: no response to 0xfc1a\n");
+		return;
+	}
+	fprintf(stderr, "bdaddr set to %02x:%02x:%02x:%02x:%02x:%02x (status %s)\n",
+		cmd[9], cmd[8], cmd[7], cmd[6], cmd[5], cmd[4],
+		(n >= 7 && rsp[6] == 0) ? "ok" : "error");
+}
+
 int main(void)
 {
 	unsigned char buf[2048];
@@ -206,6 +253,8 @@ int main(void)
 	usleep(300 * 1000);
 	while ((n = read(bt, buf, sizeof(buf))) > 0)
 		fprintf(stderr, "drained %d stale bytes\n", n);
+
+	set_bdaddr(bt);
 
 	vh = open("/dev/vhci", O_RDWR);
 	if (vh < 0) {
