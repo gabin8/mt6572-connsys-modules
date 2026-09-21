@@ -19,7 +19,7 @@ out-of-tree modules in the spirit of
 | WMT/STP control plane, firmware download | working |
 | Bluetooth (`/dev/stpbt` → BlueZ `hci0`) | working — pairing, HID keyboard, inbound reconnect |
 | Power management (PSM / chip sleep) | working — sleeps on an idle link with BT and Wi-Fi up (see [PSM](#power-management-psm)) |
-| WiFi (`wlan/` gen2 driver → cfg80211 `wlan0`) | working — scan, WPA2-PSK association, DHCP, ~34/22 Mbit/s TCP down/up |
+| WiFi (`wlan/` gen2 driver → cfg80211 `wlan0`) | working — scan, WPA2-PSK association, DHCP, station stats, ~34/22 Mbit/s TCP down/up |
 | BT + WiFi together | working — inquiry alongside traffic, no assert; costs Wi-Fi latency |
 | GPS / FM | not started |
 
