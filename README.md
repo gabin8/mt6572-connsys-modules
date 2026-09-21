@@ -126,6 +126,10 @@ installs every Wi-Fi piece; or place them by hand:
   `_MT6620_CFG_PARAM_STRUCT` starts with two version u16s and then
   `aucMacAddress[6]`. `wlan0` comes up with it, matching stock byte for
   byte.
+- `/etc/firmware/nvram/BT_Addr`: the device's BT address (stock keeps it at
+  `/data/nvram/APCFG/APRDEB/BT_Addr`; the BD_ADDR is the first six bytes).
+  The bridge programs it with vendor opcode `0xfc1a` before the core sees
+  the device. Without it the controller keeps a firmware default address.
 
 ## Bring-up
 
