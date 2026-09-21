@@ -103,6 +103,17 @@ panel is next to the keyboard.
 - If `connect` fails after `pair`: the ACL/L2CAP data path is the unproven
   part — watch the bridge log and dmesg for STP/BTIF errors or new firmware
   quirks the vhci bridge needs to shim.
+- **Connected links are held out of sniff mode** by the vhci bridge, which
+  clears the sniff bit in the link policy on Connection Complete. In sniff
+  the peripheral only transmits on anchor points and can skip 20-40 of them,
+  so an inbound key-up arrives ~500 ms late; past the input layer's 250 ms
+  autorepeat threshold the kernel repeats the key and "cat" types as
+  "caaaaaaat". Symptom to watch for: inter-event gaps in
+  `/dev/input/eventN` that are exact multiples of the sniff interval
+  (12.5 ms here). Capping sniff subrating does NOT fix it -
+  HCI_Sniff_Subrating's Max_Latency bounds the local device's transmissions,
+  not the peripheral's. The cost is radio time on both ends while something
+  is connected; chip PSM is separate and unaffected.
 - PSM stays OFF during bring-up (connsys-up.sh does it); at runtime the
   bridge governs it and lets idle ACL links sleep. Measured on the K380 that
   costs ~20 ms on the first keystroke after a sleep (median hold 130 ms after

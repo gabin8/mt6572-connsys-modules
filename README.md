@@ -17,10 +17,11 @@ out-of-tree modules in the spirit of
 |---|---|
 | BTIF transport (PIO + APDMA) | working, loopback-verified |
 | WMT/STP control plane, firmware download | working |
-| Bluetooth (`/dev/stpbt` → BlueZ `hci0`) | working — pairing, HID keyboard, inbound reconnect |
+| Bluetooth (`/dev/stpbt` → BlueZ `hci0`) | working — pairing, HID keyboard, inbound reconnect; connected links are held out of sniff (see [kbd-pair.md](tools/kbd-pair.md)) |
 | Power management (PSM / chip sleep) | working — sleeps on an idle link with BT and Wi-Fi up (see [PSM](#power-management-psm)) |
 | WiFi (`wlan/` gen2 driver → cfg80211 `wlan0`) | working — scan, WPA2-PSK association, DHCP, station stats, ~34/22 Mbit/s TCP down/up |
 | BT + WiFi together | working — inquiry alongside traffic, no assert; costs Wi-Fi latency |
+| WiFi AP / P2P (Wi-Fi Direct) | not started — hardware and firmware support it, driver sources are in git history (see [AP / P2P](#ap--p2p)) |
 | GPS / FM | not started |
 
 Verified on the Prestigio PAP5500 DUO; the Lenovo A369i carries the same
@@ -207,11 +208,49 @@ windows (10 s → 360 s) and stops at the first failure.
 | `stpbt-hci-test.c` | HCI reset smoke test over `/dev/stpbt` |
 | `hci-localver.c` | HCI Read Local Version over `/dev/stpbt` |
 | `btup-scan.c` | minimal inquiry scan over `hci0` |
+| `fbcursor.c` | draws a cursor on `/dev/fb0` from an evdev pointer - checks a BT mouse end to end with no display server |
 | `psm-sleep-probe.sh` | PSM deep-sleep wake threshold probe |
 | `connsys-regdump.sh` | CONSYS-related register dump (devmem) |
 | `build-staged-modules.sh` | rebuild the staged mainline modules (cfg80211, BT/HID set) from a kernel tree |
 | `deploy-modules-sd.sh` | sync modules + tools + scripts onto an SD-card rootfs |
 | `kbd-pair.md` | classic BT HID keyboard pairing runbook |
+
+## AP / P2P
+
+Not built today, but nothing in the hardware or firmware stands in the way -
+this is a porting job, not a capability question.
+
+What already exists:
+
+- The MAC/baseband is the same CONSYS core the stock MT6582-class driver
+  drives, and the RAM firmware we load (`WIFI_RAM_CODE_MT6582`) is the stock
+  image, so the firmware-side AP and P2P command interfaces are already
+  there. Stock Android on this board advertised `android.hardware.wifi.direct`
+  and shipped a p2p_supplicant configuration, so the combination shipped on
+  this exact hardware.
+- The driver's own P2P/AP stack exists in this repository's history. It is
+  compiled out (`-DCFG_ENABLE_WIFI_DIRECT=0` in `wlan/Kbuild`), and the
+  sources were deleted as never-compiled dead code in `6b5107f` - 40 files,
+  27k lines, 15 of them `.c`: the `p2p_*` FSM/assoc/scan/IE/RLM set under
+  `wlan/mgmt/`, `wlan/nic/p2p_nic.c`, `wlan/common/wlan_p2p.c`, and the
+  Linux glue `gl_p2p{,_cfg80211,_init,_kal}.c`. Recover any of them with
+  `git show 6b5107f^:wlan/mgmt/p2p_fsm.c`.
+
+What it would take:
+
+1. Restore those sources and add them back to `wlan/Kbuild`.
+2. Build with `CFG_ENABLE_WIFI_DIRECT=1` (and
+   `CFG_ENABLE_WIFI_DIRECT_CFG_80211` for the cfg80211 path).
+3. Register the second (P2P) net device and its cfg80211 ops alongside
+   `wlan0`.
+4. Userspace: wpa_supplicant built with AP/P2P support - the rootfs here
+   currently builds it without (`BR2_PACKAGE_WPA_SUPPLICANT_AP_SUPPORT` is
+   unset) - or hostapd for plain AP.
+
+The real work is step 2-3: `gl_p2p_cfg80211.c` targets the vendor's
+cfg80211 vintage, so it needs the same adaptation to current kernel APIs
+that the station path already went through. Treat the recovered files as a
+reference implementation rather than something that will compile as-is.
 
 ## Operational notes
 
