@@ -189,6 +189,11 @@ static void pump_to_vhci(int vh)
 
 #define BDADDR_NVRAM	"/etc/firmware/nvram/BT_Addr"
 
+/* stp_chrdev_bt returns these from read()/write() across a chip reset. The
+ * flag is sticky and poll() stays ready, so carrying on here spins. */
+#define BT_RST_START	88
+#define BT_RST_END	99
+
 /*
  * The controller powers up on a firmware default address, so program the
  * factory one from NVRAM before the core sees the device. MediaTek's setter
@@ -274,6 +279,12 @@ int main(void)
 
 		if (p[0].revents & POLLIN) {		/* radio -> host */
 			n = read(bt, buf, sizeof(buf));
+			if (n < 0 && (errno == BT_RST_START || errno == BT_RST_END)) {
+				fprintf(stderr,
+					"radio reset (errno %d) - exiting, bring the stack back up\n",
+					errno);
+				return 2;
+			}
 			if (n > 0) {
 				if (acc_len + n > (int)sizeof(acc))
 					acc_len = 0;	/* overflow: reset */

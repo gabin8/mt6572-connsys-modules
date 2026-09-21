@@ -575,12 +575,25 @@ ssize_t BT_write(struct file *filp, const char __user *buf, size_t count, loff_t
 
 	BT_DBG_FUNC("%s: count %zd pos %lld\n", __func__, count, *f_pos);
 	if (rstflag) {
+		/*
+		 * rstflag is sticky and BT_poll() reports ready while it is
+		 * set, so a polling client gets here on every wakeup. Log at
+		 * intervals or a chip reset buries the log.
+		 */
+		static int rst_read_count;
+
 		if (rstflag == 1) {	/* Reset start */
 			retval = -88;
-			BT_INFO_FUNC("%s: detect whole chip reset start\n", __func__);
+			if ((rst_read_count % 500) == 0)
+				BT_INFO_FUNC("%s: detect whole chip reset start, %d\n",
+					     __func__, rst_read_count);
+			rst_read_count++;
 		} else if (rstflag == 2) {	/* Reset end */
 			retval = -99;
-			BT_INFO_FUNC("%s: detect whole chip reset end\n", __func__);
+			if ((rst_read_count % 500) == 0)
+				BT_INFO_FUNC("%s: detect whole chip reset end, %d\n",
+					     __func__, rst_read_count);
+			rst_read_count++;
 		}
 		goto OUT;
 	}
@@ -635,8 +648,10 @@ ssize_t BT_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos
 			chip_reset_count++;
 		} else if (rstflag == 2) {	/* Reset end */
 			retval = -99;
-			BT_INFO_FUNC("%s: detect whole chip reset end\n", __func__);
-			chip_reset_count = 0;
+			if ((chip_reset_count % 500) == 0)
+				BT_INFO_FUNC("%s: detect whole chip reset end, %d\n",
+					     __func__, chip_reset_count);
+			chip_reset_count++;
 		}
 		goto OUT;
 	}
