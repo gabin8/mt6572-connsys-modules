@@ -78,7 +78,6 @@ static unsigned short mt6627_chan_para_get(unsigned short freq);
 static signed int mt6627_desense_check(unsigned short freq, signed int rssi);
 static bool mt6627_TDD_chan_check(unsigned short freq);
 static signed int mt6627_soft_mute_tune(unsigned short freq, signed int *rssi, signed int *valid);
-static signed int mt6627_get_cust_chan_para_map(void);
 
 static signed int mt6627_pwron(signed int data)
 {
@@ -862,12 +861,6 @@ static signed int mt6627_PowerUp(unsigned short *chip_id, unsigned short *device
 	/* enable connsys FM 2 wire RX */
 	fm_reg_write(0x9B, 0xF9AB);
 	fm_host_reg_write(0x80101054, 0x00003f35);
-
-	ret = mt6627_get_cust_chan_para_map();
-	if (ret) {
-		WCN_DBG(FM_ALT | CHIP, "mt6627_get_cust_chan_para_map failed\n");
-		return ret;
-	}
 
 	WCN_DBG(FM_DBG | CHIP, "pwr on seq ok\n");
 
@@ -2036,47 +2029,6 @@ static bool mt6627_TDD_chan_check(unsigned short freq)
 		return true;
 	} else
 		return false;
-}
-
-#define MT6627_FM_CHANNEL_PARAM_PATH "mt6627_fm_channel_param.dat"
-static signed int mt6627_get_cust_chan_para_map(void)
-{
-	signed int ret = 0;
-	signed int i = 0;
-	signed char *buf = NULL;
-	signed char *p = NULL;
-	signed int file_len = 0;
-	signed char *filep = NULL;
-
-	filep = MT6627_FM_CHANNEL_PARAM_PATH;
-	buf = fm_zalloc(4096);
-	if (!buf) {
-		WCN_DBG(FM_NTC | MAIN, "-ENOMEM\n");
-		return -ENOMEM;
-	}
-
-	file_len = fm_file_read(filep, buf, 4096, 0);
-
-	if (file_len <= 0) {
-		ret = -1;
-		goto out;
-	}
-	/* WCN_DBG(FM_NTC | CHIP, "file_len=%d, buf=%s\n", file_len, buf); */
-
-	for (p = buf; *p != '\0'; p++) {
-		if (*p >= '0' && *p <= '9') {
-			mt6627_chan_para_map[i] = *p;
-			i++;
-		}
-	}
-	file_len = ARRAY_SIZE(mt6627_chan_para_map);
-	WCN_DBG(FM_NTC | CHIP, "custom chan_para_map[%d]=%d\n", i, file_len);
-
-out:
-	if (buf)
-		fm_free(buf);
-
-	return ret;
 }
 
 /* get channel parameter, HL side/ FA / ATJ */
