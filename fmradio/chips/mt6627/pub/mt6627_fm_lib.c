@@ -729,6 +729,19 @@ out:
 	return ret;
 }
 
+/*
+ * CONSYS side of the FM audio link: set the I2S Rx mode in the low half of
+ * 0x80101054 and leave the upper half alone (stock keeps 0x3f3f there while
+ * FM plays).
+ */
+static void mt6627_i2s_rx_mode(void)
+{
+	unsigned int val = 0;
+
+	fm_host_reg_read(0x80101054, &val);
+	fm_host_reg_write(0x80101054, (val & 0xffff0000) | 0x3f35);
+}
+
 static signed int mt6627_PowerUp(unsigned short *chip_id, unsigned short *device_id)
 {
 	signed int ret = 0;
@@ -861,7 +874,7 @@ static signed int mt6627_PowerUp(unsigned short *chip_id, unsigned short *device
 	}
 	/* enable connsys FM 2 wire RX */
 	fm_reg_write(0x9B, 0xF9AB);
-	fm_host_reg_write(0x80101054, 0x00003f35);
+	mt6627_i2s_rx_mode();
 
 	WCN_DBG(FM_DBG | CHIP, "pwr on seq ok\n");
 
@@ -1048,7 +1061,7 @@ static bool mt6627_SetFreq(unsigned short freq)
 
 	/* enable connsys FM 2 wire RX */
 	fm_reg_write(0x9B, 0xF9AB);
-	fm_host_reg_write(0x80101054, 0x00003f35);
+	mt6627_i2s_rx_mode();
 
 	if ((mt6627_hw_info.chip_id == 0x6625)
 	    && ((mtk_wcn_wmt_chipid_query() == 0x6592) || (mtk_wcn_wmt_chipid_query() == 0x6752)
@@ -1501,7 +1514,7 @@ static signed int mt6627_restore_search(void)
 	/* set audio output I2S Tx mode */
 	fm_reg_write(0x9B, 0xF9AB);
 	/* set audio output I2S Rx mode */
-	fm_host_reg_write(0x80101054, 0x00003f35);
+	mt6627_i2s_rx_mode();
 	return 0;
 }
 
