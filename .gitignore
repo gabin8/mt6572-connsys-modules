@@ -19,6 +19,7 @@ tools/hci-localver
 tools/launcher/mtk_stp_launcher
 tools/stpbt-vhci-bridge
 tools/btup-scan
+tools/fmctl
 
 # staged firmware blobs and in-tree kos (populated per kernel build)
 tools/wifi-fw/
