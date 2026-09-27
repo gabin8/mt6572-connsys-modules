@@ -403,16 +403,6 @@ void register_fw_ops_uninit(void)
 {
 }
 
-int fm_register_irq(struct platform_driver *drv, unsigned int irq_num)
-{
-	return 0;
-}
-
-int fm_register_plat(unsigned int family_id, unsigned int conn_id)
-{
-	return 0;
-}
-
 int fm_wcn_ops_register(void)
 {
 	register_fw_ops_init();

@@ -1,0 +1,16 @@
+# MT6572 CONSYS FM radio (MT6627 RF front-end) — mtk_fm_drv.ko
+
+ccflags-y += -DMT6627_FM -DCFG_FM_CONNAC2=0 -DWMT_IDC_SUPPORT=0
+ccflags-y += -I$(src)/inc -I$(src)/plat/inc -I$(src)/chips/mt6627/inc
+ccflags-y += -I$(src)/../conn_soc/include \
+	-I$(src)/../conn_soc/linux/include \
+	-I$(src)/../conn_soc/core/include \
+	-I$(src)/../compat_inc \
+	-I$(src)/../detect_inc
+
+obj-m += mtk_fm_drv.o
+mtk_fm_drv-objs := core/fm_module.o core/fm_main.o core/fm_config.o \
+	core/fm_rds_parser.o core/fm_patch.o core/fm_utils.o core/fm_link.o \
+	core/fm_eint.o core/fm_cmd.o core/fm_reg_utils.o \
+	chips/mt6627/pub/mt6627_fm_rds.o chips/mt6627/pub/mt6627_fm_lib.o \
+	plat/legacy_wmt.o

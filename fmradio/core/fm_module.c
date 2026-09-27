@@ -24,11 +24,6 @@
 #include <linux/sched.h>
 #include <linux/delay.h>	/* udelay() */
 #include <linux/version.h>
-#include <linux/gpio.h>
-#include <linux/of.h>
-#include <linux/of_device.h>
-#include <linux/of_gpio.h>
-#include <linux/of_irq.h>
 
 #include "fm_config.h"
 #include "fm_main.h"
@@ -37,9 +32,6 @@
 #define FM_PROC_FILE		"fm"
 
 unsigned int g_dbg_level = 0xfffffff5;	/* Debug level of FM */
-
-#define FM_NO_LNA_PIN 0xffffffff
-unsigned int g_fm_lna_pin_num = FM_NO_LNA_PIN;
 
 /* fm main data structure */
 static struct fm *g_fm;
@@ -51,9 +43,6 @@ atomic_t g_fm_probe_cnt = ATOMIC_INIT(0);
 #define FM_INIT_BIT (0)
 #define FM_DEINIT_BIT (1)
 static unsigned long g_fm_module_flag;
-
-/* fm plat data structure */
-const struct fm_plat_data *g_fm_plat_data;
 
 static struct platform_driver mt_fm_dev_drv;
 
@@ -181,14 +170,6 @@ static long fm_ops_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			else
 				fm_config.rx_cfg.deemphasis = 0;
 
-			if (g_fm_lna_pin_num == FM_NO_LNA_PIN) {
-				WCN_DBG(FM_NTC | MAIN, "%s: no fm lna\n", __func__);
-			} else {
-				gpio_set_value(g_fm_lna_pin_num, 1);
-				WCN_DBG(FM_NTC | MAIN, "%s: gpio_set_value %d: 1\n",
-					__func__, g_fm_lna_pin_num);
-			}
-
 			ret = fm_powerup(fm, &parm);
 			if (ret < 0) {
 				WCN_DBG(FM_NTC | MAIN, "FM_IOCTL_POWERUP:fail in fm_powerup, return\n");
@@ -217,14 +198,6 @@ static long fm_ops_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			if (copy_from_user(&powerdwn_type, (void *)arg, sizeof(int))) {
 				ret = -EFAULT;
 				goto out;
-			}
-
-			if (g_fm_lna_pin_num == FM_NO_LNA_PIN) {
-				WCN_DBG(FM_NTC | MAIN, "%s: no fm lna\n", __func__);
-			} else {
-				gpio_set_value(g_fm_lna_pin_num, 0);
-				WCN_DBG(FM_NTC | MAIN, "%s: gpio_set_value %d: 0\n",
-					__func__, g_fm_lna_pin_num);
 			}
 
 			ret = fm_powerdown(fm, powerdwn_type);	/* 0: RX 1: TX */
@@ -1475,7 +1448,7 @@ static signed int fm_cdev_setup(struct fm *fm)
 		return ret;
 	}
 #ifndef FM_DEV_STATIC_ALLOC
-	plat->cls = class_create(THIS_MODULE, FM_NAME);
+	plat->cls = class_create(FM_NAME);
 
 	if (IS_ERR(plat->cls)) {
 		ret = PTR_ERR(plat->cls);
@@ -1567,38 +1540,9 @@ static signed int fm_mod_destroy(struct fm *fm)
 	return ret;
 }
 
-static signed int fm_request_gpio(unsigned int pin)
-{
-	signed int ret = 0;
-
-	/* request gpio pin */
-	ret = gpio_request(pin, "fmlna");
-	if (ret == 0) {
-		WCN_DBG(FM_NTC | MAIN, "request gpio pin %d ok\n", pin);
-
-		/* set gpio direction to output */
-		gpio_direction_output(pin, 0);
-	} else {
-		if (ret == -EINVAL)
-			WCN_DBG(FM_ERR | MAIN, "gpio pin %d is not valid\n", pin);
-		else if (ret == -EBUSY)
-			WCN_DBG(FM_ERR | MAIN, "gpio pin %d is busy\n", pin);
-		else
-			WCN_DBG(FM_ERR | MAIN, "gpio pin %d unknown error\n", pin);
-	}
-
-	return ret;
-}
-
 static signed int mt_fm_probe(struct platform_device *pdev)
 {
 	signed int ret = 0;
-#ifdef CONFIG_OF
-	struct device *dev = NULL;
-	struct device_node *node = NULL;
-	signed int irq_num = 0, pin_ret = 0;
-	unsigned int host_id = 0, family_id = 0, conn_id = 0;
-#endif
 
 	WCN_DBG(FM_NTC | MAIN, "%s pdev:%p g_fm_probe_cnt:%d\n",
 		__func__, pdev, atomic_read(&g_fm_probe_cnt));
@@ -1606,65 +1550,6 @@ static signed int mt_fm_probe(struct platform_device *pdev)
 
 	if (pdev == NULL)
 		return -1;
-
-#ifdef CONFIG_OF
-	dev = &pdev->dev;
-	if (dev->of_node) {
-		WCN_DBG(FM_NTC | MAIN, "current compatible:%s",
-				(char *) of_get_property(dev->of_node,
-						"compatible", NULL));
-
-		/* get family id */
-		ret = of_property_read_u32(dev->of_node, "family-id",
-			&family_id);
-		ret = of_property_read_u32(dev->of_node, "host-id",
-			&host_id);
-		ret = of_property_read_u32(dev->of_node, "conn-id",
-			&conn_id);
-
-		/* get irq number */
-		irq_num = irq_of_parse_and_map(dev->of_node, 0);
-
-#define __DUMP_STR__ \
-	"family-id:0x%04x host_id:0x%04x conn_id:0x%04x irq_num:%d\n"
-		WCN_DBG(FM_NTC | MAIN, __DUMP_STR__,
-			family_id, host_id, conn_id, irq_num);
-#undef __DUMP_STR__
-
-		ret = fm_register_irq(&mt_fm_dev_drv, irq_num);
-		if (ret)
-			return ret;
-
-		ret = fm_register_plat(family_id, conn_id);
-		if (ret)
-			return ret;
-	}
-
-	node = of_find_compatible_node(NULL, NULL, "mediatek,fmradio");
-	if (!node)
-		WCN_DBG(FM_NTC | MAIN, "FM-OF: no fm device node\n");
-	else {
-		pin_ret = of_get_named_gpio(node, "fm_lna_gpio", 0);
-		if (pin_ret < 0)
-			WCN_DBG(FM_NTC | MAIN,
-				"FM-OF: cannot find pins. pin_ret: %d\n",
-				pin_ret);
-		else {
-			g_fm_lna_pin_num = pin_ret;
-			WCN_DBG(FM_NTC | MAIN,
-				"FM-OF: FM LNA gpio pin number:%d.\n",
-				g_fm_lna_pin_num);
-
-			pin_ret = fm_request_gpio(g_fm_lna_pin_num);
-			if (pin_ret) {
-				g_fm_lna_pin_num = FM_NO_LNA_PIN;
-				WCN_DBG(FM_ERR | MAIN,
-					"FM-OF: fm_request_gpio failed. pin_ret: %d\n",
-					pin_ret);
-			}
-		}
-	}
-#endif
 
 	ret = fm_mod_init(0);
 
@@ -1676,25 +1561,15 @@ static signed int mt_fm_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static signed int mt_fm_remove(struct platform_device *pdev)
+static void mt_fm_remove(struct platform_device *pdev)
 {
 	WCN_DBG(FM_NTC | MAIN, "%s\n", __func__);
 
 	fm_mod_destroy(g_fm);
 	g_fm = NULL;
-	return 0;
 }
 
 static struct platform_device *pr_fm_device;
-
-#ifdef CONFIG_OF
-const struct of_device_id fm_of_ids[] = {
-	{
-		.compatible = "mediatek,fm",
-	},
-	{}
-};
-#endif
 
 /* platform driver entry */
 static struct platform_driver mt_fm_dev_drv = {
@@ -1703,7 +1578,6 @@ static struct platform_driver mt_fm_dev_drv = {
 	.driver = {
 		.name = FM_NAME,
 		.owner = THIS_MODULE,
-		.of_match_table = of_match_ptr(fm_of_ids),
 	}
 };
 
@@ -1714,7 +1588,7 @@ static signed int mt_fm_init(void)
 	WCN_DBG(FM_NTC | MAIN, "%s\n", __func__);
 	if (test_bit(FM_DEINIT_BIT, &g_fm_module_flag)) {
 		WCN_DBG(FM_NTC | MAIN,
-			"mt_fm_exit does not finished yet\n", __func__);
+			"%s: mt_fm_exit does not finished yet\n", __func__);
 		return -1;
 	}
 
@@ -1761,12 +1635,6 @@ static void mt_fm_exit(void)
 	WCN_DBG(FM_NTC | MAIN, "%s\n", __func__);
 	if (test_bit(FM_INIT_BIT, &g_fm_module_flag)) {
 		set_bit(FM_DEINIT_BIT, &g_fm_module_flag);
-		if (g_fm_lna_pin_num != FM_NO_LNA_PIN) {
-			gpio_free(g_fm_lna_pin_num);
-			WCN_DBG(FM_NTC | MAIN, "free gpio pin %d ok\n",
-				g_fm_lna_pin_num);
-		}
-
 		platform_driver_unregister(&mt_fm_dev_drv);
 		platform_device_unregister(pr_fm_device);
 		fm_env_destroy();
