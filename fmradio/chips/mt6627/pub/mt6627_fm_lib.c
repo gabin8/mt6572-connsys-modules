@@ -811,11 +811,12 @@ static signed int mt6627_PowerUp(unsigned short *chip_id, unsigned short *device
 		WCN_DBG(FM_ALT | CHIP, "mt6627_pwrup_clock_on failed\n");
 		return ret;
 	}
-/* #ifdef FM_DIGITAL_INPUT */
-	/* mt6627_I2s_Setting(MT6627_I2S_ON, MT6627_I2S_MASTER, MT6627_I2S_44K); */
-	/* mt_combo_audio_ctrl(COMBO_AUDIO_STATE_2); */
-	/* mtk_wcn_cmb_stub_audio_ctrl((CMB_STUB_AIF_X)CMB_STUB_AIF_2); */
-/* #endif */
+	/* CONSYS audio interface to FM digital: I2S out to the AFE */
+	ret = mtk_wcn_cmb_stub_audio_ctrl(CMB_STUB_AIF_2);
+	if (ret) {
+		WCN_DBG(FM_ALT | CHIP, "FM I2S audio interface failed: %d\n", ret);
+		return ret;
+	}
 
 	/* Wholechip FM Power Up: step 2, read HW version */
 	fm_reg_read(0x62, &tmp_reg);
@@ -897,9 +898,8 @@ static signed int mt6627_PowerDown(void)
 
 	/* mt6627_RampDown(); */
 
-/* #ifdef FM_DIGITAL_INPUT */
-/* mt6627_I2s_Setting(MT6627_I2S_OFF, MT6627_I2S_SLAVE, MT6627_I2S_44K); */
-/* #endif */
+	/* audio interface back to idle (BT PCM off, no FM digital) */
+	mtk_wcn_cmb_stub_audio_ctrl(CMB_STUB_AIF_0);
 	/* pwer up sequence 0425 */
 	/* A0:set audio output I2X Rx mode: */
 	fm_host_reg_read(0x80101054, &tem);
