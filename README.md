@@ -22,7 +22,8 @@ out-of-tree modules in the spirit of
 | WiFi (`wlan/` gen2 driver → cfg80211 `wlan0`) | working — scan, WPA2-PSK association, DHCP, station stats, ~34/22 Mbit/s TCP down/up |
 | BT + WiFi together | working — inquiry alongside traffic, no assert; costs Wi-Fi latency |
 | WiFi AP / P2P (Wi-Fi Direct) | not started — hardware and firmware support it, driver sources are in git history (see [AP / P2P](#ap--p2p)) |
-| GPS / FM | not started |
+| FM receiver (`fmradio/` MT6627 driver → `/dev/fm`) | working — tune, scan/seek, RDS, audio to the headphones through the AFE's CONSYS I2S input; the headphone cable is the antenna |
+| GPS | not started |
 
 Verified on the Prestigio PAP5500 DUO; the Lenovo A369i carries the same
 silicon.
@@ -38,7 +39,11 @@ silicon.
 - The **WMT/STP** layer multiplexes BT/GPS/FM/WMT channels over BTIF, and
   downloads the firmware patch at function-on.
 - Char devices: `/dev/stpwmt` (control, major 190), `/dev/stpbt` (BT HCI,
-  major 192), `/dev/wmtWifi` (WiFi func ctrl, major 155).
+  major 192), `/dev/wmtWifi` (WiFi func ctrl, major 155), `/dev/fm` (FM
+  receiver, dynamic major).
+- FM audio leaves CONSYS digitally: the WMT audio-interface command puts it
+  in FM-I2S mode, the receiver drives the AFE's I2S input as master at
+  32 kHz, and the kernel's AFE driver resamples it onto the downlink.
 
 ## Kernel prerequisites
 
@@ -65,7 +70,11 @@ The kernel tree the modules build against must provide:
   is a module or built in varies with the config: `bt-up.sh` loads the ones
   that exist as `.ko` and skips the rest, so either is fine (`libaes` is
   typically `CONFIG_CRYPTO_LIB_AES=y` and has no module at all);
-- `CONFIG_CFG80211` (=m works; insmod `cfg80211.ko` before `wlan_gen2.ko`).
+- `CONFIG_CFG80211` (=m works; insmod `cfg80211.ko` before `wlan_gen2.ko`);
+- for FM audio, the MT6572 AFE driver's FM path: the `FM Playback Switch`
+  and `FM Playback Volume` controls, which take the CONSYS I2S input
+  through its ASRC and HW gain 2 onto the downlink. The receiver works
+  without it, but stays silent.
 
 Build the kernel once (`make modules`) so `Module.symvers` exists.
 
@@ -78,7 +87,7 @@ make KDIR=/path/to/tree # or point at any prepared kernel tree
 
 Produces `btif/mtk_btif_drv.ko`, `conn_soc/mtk_stp_wmt_soc.ko`,
 `conn_soc/mtk_stp_bt_soc.ko`, `conn_soc/mtk_wmt_wifi_soc.ko`,
-`wlan/wlan_gen2.ko`.
+`wlan/wlan_gen2.ko`, `fmradio/mtk_fm_drv.ko`.
 
 The wlan driver links against cfg80211; with `CONFIG_CFG80211=m` build it
 first (`tools/build-staged-modules.sh` does this, and also stages the
@@ -102,6 +111,7 @@ Userspace tools cross-compile statically:
 ```sh
 arm-linux-gnueabihf-gcc -static -O2 -o tools/stpbt-vhci-bridge tools/stpbt-vhci-bridge.c
 arm-linux-gnueabihf-gcc -static -O2 -o tools/launcher/mtk_stp_launcher tools/launcher/stp_uart_launcher.c
+arm-linux-gnueabihf-gcc -static -O2 -I fmradio/inc -o tools/fmctl tools/fmctl.c
 ```
 
 ## Firmware
@@ -109,7 +119,7 @@ arm-linux-gnueabihf-gcc -static -O2 -o tools/launcher/mtk_stp_launcher tools/lau
 All CONSYS firmware ships with the stock device image and is **not**
 redistributed here. Run `tools/wifi-fw-extract.sh` on the device (booted
 into the mainline rootfs, stock image still on eMMC) and it extracts and
-installs every Wi-Fi piece; or place them by hand:
+installs every Wi-Fi and FM piece; or place them by hand:
 
 - `/system/etc/firmware/`: `mt6572_82_patch_e1_{0,1}_hdr.bin` — **also
   copied as `ROMv1_patch_{0,1}_hdr.bin`**: outside Android the launcher
@@ -119,6 +129,10 @@ installs every Wi-Fi piece; or place them by hand:
   dies at entry — and `WMT_SOC.cfg`;
 - `/lib/firmware/`: `WIFI_RAM_CODE_MT6582` (the Wi-Fi RAM image, loaded by
   the wlan driver via request_firmware);
+- `/lib/firmware/`: `mt6627_fm_v*_patch.bin` / `mt6627_fm_v*_coeff.bin`
+  (FM DSP patch and coefficients, stock keeps them in
+  `/system/etc/firmware/mt6627/`). The driver picks the pair for the chip's
+  DSP ROM version - v1 on these boards, the other versions ship empty;
 - `/etc/firmware/nvram/WIFI`: the device's Wi-Fi NVRAM (RF calibration,
   514 B, stock keeps it at `/data/nvram/APCFG/APRDEB/WIFI`). Without it
   unicast RX is broken — the per-BSS receive filter and the netdev address
@@ -148,6 +162,12 @@ Run at boot (`tools/S99bt`) or by hand:
    `iw` / `wpa_supplicant -D nl80211` / `udhcpc` flow. PSM needs no
    manual handling: the driver holds a keep-awake reference whenever Wi-Fi
    is busy and lets the chip sleep when it is not.
+
+4. `tools/fm-up.sh [MHz]` — FM: insmods `mtk_fm_drv`, turns the AFE FM
+   route on and runs `fmctl` in the foreground (`t <MHz>` tune, `s+`/`s-`
+   seek, `S` scan, `v <0-31>` chip volume, `q` power down). Headphones
+   first: their cable is the antenna, and `fmctl` keeps the receiver muted
+   while they are out. The overall level is the shared `Playback Volume`.
 
 Pairing a classic HID keyboard end-to-end is documented in
 `tools/kbd-pair.md`.
@@ -202,6 +222,8 @@ windows (10 s → 360 s) and stops at the first failure.
 | `connsys-up.sh` | one-shot CONSYS bring-up + HCI smoke test |
 | `bt-up.sh` / `S99bt` | full BT stack bring-up (boot service) |
 | `wifi-up.sh` | Wi-Fi bring-up: wlan modules, func-on, waits for `wlan0` |
+| `fm-up.sh` | FM bring-up: driver, AFE route, `fmctl` in the foreground |
+| `fmctl.c` | FM receiver control over `/dev/fm`: tune, soft-mute seek/scan, volume, RDS station name/text, register access; mutes while the headphones are out |
 | `stpbt-vhci-bridge.c` | `/dev/stpbt` ↔ `/dev/vhci` pump (creates `hci0`), H4 reframing, firmware quirk shims, PSM governor |
 | `launcher/stp_uart_launcher.c` | resident WMT launcher (`-m 3` = BTIF mode): firmware download + handshake |
 | `btif-lpbk-test.c` | BTIF DMA loopback test (non-blocking) |
@@ -279,6 +301,15 @@ reference implementation rather than something that will compile as-is.
   busybox wget's --post-file sends a zero-length body in this build. The
   idle-gated keep-awake costs nothing measurable: interleaved runs with
   `wifi_psm_idle_ms` 0 and 500 are within noise of each other.
+- Closing `/dev/fm` powers the receiver down, so whatever drives it has to
+  keep it open - `fmctl` stays in the foreground for that reason. The driver
+  has no hardware seek: `fmctl` steps the band with soft-mute tunes and the
+  chip's per-channel "valid station" verdict, as MediaTek's own FM service
+  does.
+- While FM plays it owns the downlink rate (44.1 kHz); DL1 playback at
+  another rate is refused until FM is switched off.
+- RDS decodes only on a clean signal; with the headphone cable as antenna,
+  stations around -75 dBm give the PI code but rarely a full station name.
 - BT and Wi-Fi do run together (verified: a full BT inquiry alongside a
   25-packet ping, 0% loss, no assert), but the inquiry monopolises the
   shared MT6627N front end in bursts — round-trip average went from ~20 ms
@@ -295,4 +326,7 @@ GPL-2.0. Derived from:
   platform glue) — 3.4 era, via `l33tnoob/MT65x2_kernel_lk`;
 - `frank-w/BPI-Router-Linux` 4.14 forward-port of the same stack (used as
   the API-churn roadmap);
-- the `combo_tool` STP launcher from the AOSP MediaTek vendor tree.
+- the `combo_tool` STP launcher from the AOSP MediaTek vendor tree;
+- the MediaTek FM driver (`connectivity/fmradio`) as packaged out of tree in
+  [mt8768-modules](https://codeberg.org/lowendlibre/mt8768-modules), MT6627
+  chip support only.

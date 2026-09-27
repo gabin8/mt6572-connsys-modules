@@ -2,10 +2,11 @@
 # wifi-fw-extract.sh — run ON the device, booted into the mainline rootfs,
 # with the stock Android image still present on eMMC.
 #
-# Pulls everything Wi-Fi needs out of the stock image and installs it in
-# the places the stack expects (see README "Firmware"):
+# Pulls everything Wi-Fi and FM need out of the stock image and installs it
+# in the places the stack expects (see README "Firmware"):
 #
 #   /lib/firmware/WIFI_RAM_CODE*                  (wlan driver, request_firmware)
+#   /lib/firmware/mt6627_fm_*.bin                 (FM DSP patch + coefficients)
 #   /system/etc/firmware/mt6572_82_patch_*.bin    (WMT patches)
 #   /system/etc/firmware/ROMv1_patch_*.bin        (same bytes - launcher fallback name)
 #   /system/etc/firmware/WMT_SOC.cfg
@@ -77,6 +78,20 @@ done
 [ "$PCNT" -gt 0 ] || echo "FW-EXTRACT: WARNING - no WMT patches found (Wi-Fi RAM code will die at entry without them)"
 
 [ -f "$MNT/etc/firmware/WMT_SOC.cfg" ] && cp "$MNT/etc/firmware/WMT_SOC.cfg" "$SYSFW/" && cp "$MNT/etc/firmware/WMT_SOC.cfg" "$OUT/" && echo "FW-EXTRACT: WMT_SOC.cfg"
+
+# FM: the FM driver picks the patch/coefficient pair for the chip's DSP ROM
+# version by name; stock ships every version (only v1 is non-empty here)
+FCNT=0
+for f in "$MNT"/etc/firmware/mt6627/mt6627_fm_*.bin; do
+    [ -f "$f" ] || continue
+    cp "$f" "$FWDIR/" && cp "$f" "$OUT/" || { echo "FW-EXTRACT: FAIL - copy $f"; umount "$MNT"; exit 1; }
+    FCNT=$((FCNT + 1))
+done
+if [ "$FCNT" -gt 0 ]; then
+    echo "FW-EXTRACT: FM firmware ($FCNT files)"
+else
+    echo "FW-EXTRACT: WARNING - no etc/firmware/mt6627/mt6627_fm_*.bin (FM will not power up)"
+fi
 umount "$MNT"
 
 # --- stock /data: Wi-Fi NVRAM (MAC + RF calibration) --------------------------
