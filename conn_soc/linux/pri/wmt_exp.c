@@ -265,6 +265,15 @@ ENUM_WMTHWVER_TYPE_T mtk_wcn_wmt_hwver_get(VOID)
 EXPORT_SYMBOL(mtk_wcn_wmt_hwver_get);
 #endif
 
+#if !WMT_EXP_HID_API_EXPORT
+/* raw chip info (chip id, hw/fw version) for the FM driver */
+UINT32 mtk_wcn_wmt_ic_info_get(ENUM_WMT_CHIPINFO_TYPE_T type)
+{
+	return wmt_lib_get_icinfo(type);
+}
+EXPORT_SYMBOL(mtk_wcn_wmt_ic_info_get);
+#endif
+
 #if WMT_EXP_HID_API_EXPORT
 MTK_WCN_BOOL _mtk_wcn_wmt_dsns_ctrl(ENUM_WMTDSNS_TYPE_T eType)
 #else
