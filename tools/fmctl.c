@@ -15,7 +15,7 @@
  *   S         scan the band    v <0-31>  chip volume
  *   m / u     mute / unmute    r         RSSI + stereo
  *   i         chip / patch info
- *   b         RDS block counters
+ *   b         RDS groups decoded so far, RDS FIFO status
  *   a <0|1>   antenna: 0 long (headset cable), 1 short
  *   g <reg> / w <reg> <val>     read / write an FM core register
  *   h <addr> [val]              read / write a CONSYS host register
@@ -100,15 +100,15 @@ struct fm_hw_info {
 #define FM_IOCTL_RW_REG		_IOWR(FM_IOC_MAGIC, 12, struct fm_ctl_parm *)
 #define FM_IOCTL_HOST_RDWR	_IOWR(FM_IOC_MAGIC, 44, struct fm_host_rw_parm *)
 #define FM_IOCTL_GETMONOSTERO	_IOWR(FM_IOC_MAGIC, 13, uint16_t *)
-#define FM_IOCTL_GETGOODBCNT	_IOWR(FM_IOC_MAGIC, 15, uint16_t *)
-#define FM_IOCTL_GETBADBNT	_IOWR(FM_IOC_MAGIC, 16, uint16_t *)
-#define FM_IOCTL_GETBLERRATIO	_IOWR(FM_IOC_MAGIC, 17, uint16_t *)
 #define FM_IOCTL_RDS_ONOFF	_IOWR(FM_IOC_MAGIC, 18, uint16_t *)
+#define FM_IOCTL_RDS_GROUPCNT	_IOWR(FM_IOC_MAGIC, 34, struct rds_group_cnt_req_t *)
 #define FM_IOCTL_ANA_SWITCH	_IOWR(FM_IOC_MAGIC, 30, int32_t *)
 #define FM_IOCTL_GET_HW_INFO	_IOWR(FM_IOC_MAGIC, 40, struct fm_hw_info *)
 #define FM_IOCTL_PRE_SEARCH	_IOWR(FM_IOC_MAGIC, 45, int32_t)
 #define FM_IOCTL_RESTORE_SEARCH	_IOWR(FM_IOC_MAGIC, 46, int32_t)
 #define FM_IOCTL_SOFT_MUTE_TUNE	_IOWR(FM_IOC_MAGIC, 63, struct fm_softmute_tune_t *)
+
+#define RDS_FIFO_STATUS		0x87	/* MT6627 FM_RDS_FIFO_STATUS0 */
 
 #define FM_BAND_UE		1	/* 87.5 - 108 MHz */
 #define FM_SPACE_100K		10
@@ -271,17 +271,24 @@ static void show_info(void)
 	       hw.chip_id, hw.eco_ver, hw.rom_ver, hw.patch_ver);
 }
 
+/*
+ * The driver's group counters: every group the RDS parser accepted. The chip's
+ * good/bad block counters only count during a block-error measurement and
+ * read 0 otherwise, so they say nothing here.
+ */
 static void show_rds_stats(void)
 {
-	uint16_t good = 0, bad = 0, bler = 0;
+	struct rds_group_cnt_req_t req = { .op = RDS_GROUP_CNT_READ };
+	struct fm_ctl_parm fifo = { .addr = RDS_FIFO_STATUS, .rw_flag = 1 };
 
-	if (ioctl(fd, FM_IOCTL_GETGOODBCNT, &good) < 0 ||
-	    ioctl(fd, FM_IOCTL_GETBADBNT, &bad) < 0 ||
-	    ioctl(fd, FM_IOCTL_GETBLERRATIO, &bler) < 0) {
-		fprintf(stderr, "rds stats: %s\n", strerror(errno));
+	if (ioctl(fd, FM_IOCTL_RDS_GROUPCNT, &req) < 0) {
+		fprintf(stderr, "rds groups: %s\n", strerror(errno));
 		return;
 	}
-	printf("rds blocks good %u bad %u, bler %u%%\n", good, bad, bler);
+	if (ioctl(fd, FM_IOCTL_RW_REG, &fifo) < 0)
+		fifo.val = 0xffff;
+	printf("rds groups %u (0A %u, 0B %u, 2A %u), fifo %04x\n", req.gc.total,
+	       req.gc.groupA[0], req.gc.groupB[0], req.gc.groupA[2], fifo.val);
 }
 
 static void set_u32(unsigned long req, uint32_t val, const char *what)
