@@ -34,6 +34,7 @@ amixer -q cset name='FM Playback Volume' 524288
 amixer -q cset name='FM Playback Switch' "$route"
 
 if [ -z "$bg" ]; then
+	trap : INT	# Ctrl-C ends fmctl, not this script: the route still goes off
 	fm/fmctl "$MHZ"
 	amixer -q cset name='FM Playback Switch' off
 	exit 0
