@@ -101,9 +101,9 @@ mkdir -p "$SD/etc/init.d"
 cp "$M/tools/S99bt" "$SD/etc/init.d/S99bt"
 chmod +x "$SD/etc/init.d/S99bt"
 
-# 5. FM radio: driver + fmctl -> /root/connsys/fm, fm-up.sh next to the other
-# bring-up scripts, and the MT6627 DSP patch/coefficients -> /lib/firmware
-# (request_firmware). wifi-fw-extract.sh stages the firmware in tools/wifi-fw/
+# 5. FM radio: driver + fmctl -> /root/connsys/fm, fm-up.sh and fm-record.sh
+# next to the other bring-up scripts, and the MT6627 DSP patch/coefficients
+# -> /lib/firmware (request_firmware). wifi-fw-extract.sh stages the firmware in tools/wifi-fw/
 # with the rest. fmctl is a gitignored build product, like the launcher:
 #   arm-linux-gnueabihf-gcc -static -O2 -I fmradio/inc -o tools/fmctl tools/fmctl.c
 mkdir -p "$SD/root/connsys/fm"
@@ -111,6 +111,7 @@ cp "$M/fmradio/mtk_fm_drv.ko" "$SD/root/connsys/fm/"
 [ -f "$M/tools/fmctl" ] || { echo "MISSING $M/tools/fmctl — build it (see README)" >&2; exit 1; }
 install -m 0755 "$M/tools/fmctl" "$SD/root/connsys/fm/fmctl"
 install -m 0755 "$M/tools/fm-up.sh" "$SD/root/connsys/fm-up.sh"
+install -m 0755 "$M/tools/fm-record.sh" "$SD/root/connsys/fm-record.sh"
 if ls "$M"/tools/wifi-fw/mt6627_fm_*.bin >/dev/null 2>&1; then
 	cp "$M"/tools/wifi-fw/mt6627_fm_*.bin "$SD/lib/firmware/"
 else
