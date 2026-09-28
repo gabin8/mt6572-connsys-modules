@@ -112,7 +112,7 @@ Userspace tools cross-compile statically:
 
 ```sh
 arm-linux-gnueabihf-gcc -static -O2 -o tools/stpbt-vhci-bridge tools/stpbt-vhci-bridge.c
-arm-linux-gnueabihf-gcc -static -O2 -o tools/launcher/mtk_stp_launcher tools/launcher/stp_uart_launcher.c
+arm-linux-gnueabihf-gcc -static -O2 -I tools/launcher -o tools/launcher/mtk_stp_launcher tools/launcher/stp_uart_launcher.c
 arm-linux-gnueabihf-gcc -static -O2 -I fmradio/inc -o tools/fmctl tools/fmctl.c
 ```
 
@@ -222,6 +222,9 @@ event; this tree carries the fix.
 windows (10 s → 360 s) and stops at the first failure.
 
 ## Tools
+
+How to run and build each one, and the rules they share, are in
+[tools/README.md](tools/README.md).
 
 | Tool | Purpose |
 |---|---|
