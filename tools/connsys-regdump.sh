@@ -1,6 +1,6 @@
 #!/bin/sh
 # CONSYS clock-hunt register dump — run IDENTICALLY on stock Android (adb,
-# with BT enabled) and on mainline (UART shell, after connsys-spike.sh).
+# with BT enabled) and on mainline (UART shell, after connsys-up.sh).
 # Diff the two outputs to find the register that makes the conn2ap bridge run.
 #
 # Usage: sh connsys-regdump.sh [path-to-devmem]   (default: devmem in PATH)
