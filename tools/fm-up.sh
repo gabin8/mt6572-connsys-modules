@@ -1,17 +1,51 @@
 #!/bin/sh
-# fm-up.sh [MHz] - FM radio (run from /root/connsys, after connsys-up.sh).
-# Loads the FM driver, routes the receiver to the downlink and runs fmctl in
-# the foreground: one command per line ("?" lists them), "q" powers the
-# receiver down. Plug headphones in first - their cable is the antenna, and
-# fmctl keeps the receiver muted while they are out.
+# fm-up.sh [-b] [-n] [MHz] - FM radio (run from /root/connsys, after connsys-up.sh).
+# Loads the FM driver, routes the receiver to the downlink and runs fmctl:
+#   default  in the foreground: one command per line ("?" lists them), "q"
+#            powers the receiver down;
+#   -b       in the background, taking the same commands through the FIFO
+#            /tmp/fmin (echo "t 99.0" > /tmp/fmin, echo q > /tmp/fmin);
+#   -n       without turning the speaker/headphone route on (fm-record.sh).
+# Plug headphones in first - their cable is the antenna, and fmctl keeps the
+# receiver muted while they are out.
 cd /root/connsys || exit 1
+FIFO=/tmp/fmin
 
+bg=
+route=on
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-b) bg=1 ;;
+	-n) route=off ;;
+	*) break ;;
+	esac
+	shift
+done
+MHZ="${1:-100.0}"
+
+if pidof fmctl > /dev/null; then
+	echo "fm-up: fmctl is already running" >&2
+	exit 1
+fi
 lsmod | grep -q mtk_fm_drv || insmod fm/mtk_fm_drv.ko || exit 1
 
 # FM HW gain 0 dB; the shared "Playback Volume" (downlink gain) is left alone
 amixer -q cset name='FM Playback Volume' 524288
-amixer -q cset name='FM Playback Switch' on
+amixer -q cset name='FM Playback Switch' "$route"
 
-fm/fmctl "${1:-100.0}"
+if [ -z "$bg" ]; then
+	fm/fmctl "$MHZ"
+	amixer -q cset name='FM Playback Switch' off
+	exit 0
+fi
 
-amixer -q cset name='FM Playback Switch' off
+rm -f "$FIFO"
+mkfifo "$FIFO" || exit 1
+sleep 999999999 > "$FIFO" &	# keeps the FIFO open between commands
+keep=$!
+(
+	fm/fmctl "$MHZ" < "$FIFO" > /dev/console 2>&1
+	kill "$keep" 2>/dev/null
+	rm -f "$FIFO"
+	amixer -q cset name='FM Playback Switch' off
+) &
