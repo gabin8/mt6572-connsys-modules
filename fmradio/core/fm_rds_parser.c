@@ -1491,6 +1491,23 @@ static unsigned short bit_mask(unsigned char n)
 	return 0xFFFF >> (16-(n+1));
 }
 
+/*
+ * A radio text segment counts once it arrived twice alike: the chip's error
+ * correction can turn a noisy block into a wrong one that passes the CRC, and
+ * its corrected-bit count is not reliable enough to tell. "once" keeps the
+ * last copy of every segment.
+ */
+static bool rds_g2_rt_confirmed(unsigned char addr, unsigned char subtype,
+				const unsigned char *fresh, unsigned char *once)
+{
+	signed int j = (subtype == RDS_GRP_VER_A) ? 4 : 2;	/* segment width */
+
+	if (memcmp(&fresh[j * addr], &once[j * addr], j) == 0)
+		return true;
+	fm_memcpy(&once[j * addr], &fresh[j * addr], j);
+	return false;
+}
+
 static bool rds_g2_rt_check_valid(
 	unsigned char addr,
 	unsigned char subtype,
@@ -1582,7 +1599,7 @@ static signed int rds_retrieve_g2(unsigned short *source, unsigned char subtype,
 	if (txtAB_change == true) {
 		/* clear buf */
 		fm_memset(fresh, 0x20, bufsize);
-		/* do not use once now. */
+		fm_memset(once, 0x20, bufsize);
 		fm_memset(twice, 0x20, bufsize);
 		rt_bm.bm_clr(&rt_bm);
 		end_addr = FM_RDS_RT_ADDR_INVALID;
@@ -1599,10 +1616,10 @@ static signed int rds_retrieve_g2(unsigned short *source, unsigned char subtype,
 					STATE_SET(&rt_sm, RDS_RT_FINISH);
 					continue;
 				}
-				/*
-				 * since twice compare is not useful in real case
-				 * we do not use rds_g2_rt_cmp now.
-				 */
+				if (!rds_g2_rt_confirmed(rt_addr, subtype, fresh, once)) {
+					STATE_SET(&rt_sm, RDS_RT_FINISH);
+					continue;
+				}
 				rds_g2_rt_copy(rt_addr, subtype, fresh, twice);
 
 				rds_g2_rt_check_end(rt_addr, subtype, twice, &txt_end);

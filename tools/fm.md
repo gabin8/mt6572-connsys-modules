@@ -136,7 +136,9 @@ that costs CPU.
   radio for the same reason.
 - **RDS missing or partial:** RDS needs a steadier signal than audio. At
   around -75 dBm PI, name and text come through, but not all the time;
-  `b` shows 0 groups and FIFO `0000` while the chip decodes none.
+  `b` shows 0 groups and FIFO `0000` while the chip decodes none. The parser
+  takes a new PI and each radio text segment only after they arrive twice
+  alike, so the text fills in over a few seconds rather than garbled.
 - **Music playback fails with EBUSY while FM plays:** FM holds the downlink
   at 44.1 kHz; play 44.1 kHz material, or switch the FM route off first.
   Recording is not affected.

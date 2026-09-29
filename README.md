@@ -324,7 +324,10 @@ reference implementation rather than something that will compile as-is.
   another rate is refused until FM is switched off.
 - RDS needs a steady signal: with the headphone cable as antenna a station
   around -75 dBm delivers PI, station name and radio text, but not all the
-  time. `fmctl`'s `b` counts the groups the parser accepted;
+  time. The MT6627's error correction lets some miscorrected blocks pass its
+  CRC, and its corrected-bit count is not reliable enough to reject them, so
+  the parser takes a new PI and each radio text segment only after they
+  arrive twice alike. `fmctl`'s `b` counts the groups the parser accepted;
   the chip's own block counters only run during a block-error measurement
   and stay at 0.
 - BT and Wi-Fi do run together (verified: a full BT inquiry alongside a
