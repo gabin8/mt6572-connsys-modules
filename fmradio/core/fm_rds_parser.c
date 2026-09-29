@@ -322,8 +322,14 @@ extern signed int rds_log_out(struct rds_log_t *thiz, struct rds_rx_t *dst, sign
  * To get rds group pi code form blockA
  * If success return 0, else return error code
 */
+/*
+ * A new PI is taken once two groups in a row carry it: the chip's error
+ * correction can turn a noisy block A into a wrong one that passes the CRC.
+ * *dirty flags a newly taken PI.
+ */
 static signed int rds_grp_pi_get(unsigned short crc, unsigned short blk, unsigned short *pi, bool *dirty)
 {
+	static unsigned short candidate;
 	signed int ret = 0;
 	bool valid = false;
 
@@ -340,13 +346,13 @@ static signed int rds_grp_pi_get(unsigned short crc, unsigned short blk, unsigne
 	ret = rds_checksum_check(crc, FM_RDS_GDBK_IND_A, &valid);
 
 	if (valid == true) {
-		if (*pi != blk) {
+		*dirty = false;
+		if (*pi != blk && blk == candidate) {
 			/* PI=program Identication */
 			*pi = blk;
 			*dirty = true;	/* yes, we got new PI code */
-		} else {
-			*dirty = false;	/* PI is the same as last one */
 		}
+		candidate = blk;
 	} else {
 		WCN_DBG(FM_WAR | RDSC, "Block0 CRC err\n");
 		return -FM_ECRC;
@@ -2147,9 +2153,9 @@ signed int rds_parser(struct rds_t *rds_dst, struct rds_rx_t *rds_raw,
 		if (ret) {
 			WCN_DBG(FM_WAR | RDSC, "get group pi err[ret=%d]\n", ret);
 			goto do_next;
-		} else if (dirty == false) {
+		} else if (dirty == true) {
 			WCN_DBG(FM_INF | RDSC, "dirty = %d, update PI event\n", dirty);
-			ret = rds_event_set(event, RDS_EVENT_PI_CODE);	/* yes, we got same PI, can be trust */
+			ret = rds_event_set(event, RDS_EVENT_PI_CODE);	/* confirmed new PI */
 		}
 
 		ret = rds_grp_pty_get(block_data[4], block_data[1], &rds_dst->PTY, &dirty);
