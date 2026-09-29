@@ -84,7 +84,7 @@ alone: `wlan_gen2` holds its own keep-awake reference, and forcing
 
 ### `fm-up.sh`, `fm-record.sh`, `fmctl`
 
-FM radio: listen, seek, scan and read RDS with `fm-up.sh [-b] [-n] [MHz]`;
+FM radio: listen, seek, scan and read RDS with `fm-up.sh [-b] [-n] [-s] [MHz]`;
 record or stream with `fm-record.sh <MHz> [seconds] [file|-]`. `fmctl` is
 the `/dev/fm` client both scripts drive. Everything is in [fm.md](fm.md).
 

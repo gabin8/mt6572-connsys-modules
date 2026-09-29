@@ -20,7 +20,8 @@ sends it to the codec and, on request, into memory.
   README's Firmware section; `wifi-fw-extract.sh` pulls them from stock).
 - The kernel has the AFE FM path: `amixer controls | grep FM` lists
   `FM Playback Switch` and `FM Playback Volume`, and `arecord -l` shows
-  card 0 device 1, "AWB Capture", for recording.
+  card 0 device 1, "AWB Capture", for recording. `Speaker Switch` is there
+  too for `-s`.
 
 ## Listening
 
@@ -64,6 +65,20 @@ echo q > /tmp/fmin                   # stop: receiver off, route off, FIFO gone
 `-n` leaves the speaker/headphone route off (receiver on, nothing heard);
 turn it on or off at any time with
 `amixer cset name="FM Playback Switch" on|off`.
+
+### On the speaker with the headphones in
+
+```sh
+/root/connsys/fm-up.sh -s 105.0                  # or -b -s
+amixer cset name='Speaker Switch' on|off         # the same by hand, at any time
+```
+
+Plugging the headphones in turns the speaker off; `Speaker Switch` turns it
+back on while their cable stays the antenna. The headphones keep playing:
+the speaker amplifier is fed from the headphone output, so both play at one
+level (`Playback Volume`), and there is no speaker-only setting with the
+headphones in. A replug turns the speaker off again. When `-s` ends, the
+speaker goes back to what the jack says.
 
 ## Recording
 

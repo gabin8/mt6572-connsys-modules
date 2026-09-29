@@ -76,7 +76,8 @@ The kernel tree the modules build against must provide:
   through its ASRC and HW gain 2 onto the downlink, and for recording its
   AWB capture device (card 0 device 1, "AWB Capture", 44.1 kHz stereo S16),
   which takes the same resampled stream into memory. The receiver works
-  without them, but stays silent.
+  without them, but stays silent. `fm-up.sh -s` also needs the sound
+  card's `Speaker Switch`, to keep the speaker on with the headphones in.
 
 Build the kernel once (`make modules`) so `Module.symvers` exists.
 
@@ -165,9 +166,10 @@ Run at boot (`tools/S99bt`) or by hand:
    manual handling: the driver holds a keep-awake reference whenever Wi-Fi
    is busy and lets the chip sleep when it is not.
 
-4. `tools/fm-up.sh [-b] [-n] [MHz]` — FM radio: insmods `mtk_fm_drv`,
+4. `tools/fm-up.sh [-b] [-n] [-s] [MHz]` — FM radio: insmods `mtk_fm_drv`,
    turns the AFE FM route on and runs `fmctl`, in the foreground or (`-b`)
-   in the background on the FIFO `/tmp/fmin`. Headphones first - their
+   in the background on the FIFO `/tmp/fmin`; `-s` plays on the speaker as
+   well, with the headphones in. Headphones first - their
    cable is the antenna.
 5. `tools/fm-record.sh <MHz> [seconds] [file|-]` — record a station as a
    44.1 kHz stereo WAV, or stream it (`-` = stdout, e.g. into `nc`).
