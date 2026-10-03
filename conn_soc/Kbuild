@@ -23,3 +23,6 @@ mtk_stp_bt_soc-objs := linux/pub/stp_chrdev_bt.o
 
 obj-m += mtk_wmt_wifi_soc.o
 mtk_wmt_wifi_soc-objs := linux/pub/wmt_chrdev_wifi.o
+
+obj-m += mtk_stp_gps_soc.o
+mtk_stp_gps_soc-objs := linux/pub/stp_chrdev_gps.o
