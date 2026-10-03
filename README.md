@@ -23,7 +23,7 @@ out-of-tree modules in the spirit of
 | BT + WiFi together | working — inquiry alongside traffic, no assert; costs Wi-Fi latency |
 | WiFi AP / P2P (Wi-Fi Direct) | not started — hardware and firmware support it, driver sources are in git history (see [AP / P2P](#ap--p2p)) |
 | FM receiver (`fmradio/` MT6627 driver → `/dev/fm`) | working — tune, scan/seek, RDS (PI, station name, radio text), audio to the headphones through the AFE's CONSYS I2S input, recording and streaming through the AFE's capture device; the headphone cable is the antenna |
-| GPS | not started |
+| GPS (`conn_soc/` → `/dev/stpgps`) | working — first fix in about 50 s from an empty aiding store, about 10 s warm, with the device's own stock positioning engine; PSM-safe alongside BT. No bring-up script or gpsd feed yet (see [GPS](#gps)) |
 
 Verified on the Prestigio PAP5500 DUO; the Lenovo A369i carries the same
 silicon.
@@ -38,9 +38,9 @@ silicon.
   at `0x11000380`/`0x11000400`).
 - The **WMT/STP** layer multiplexes BT/GPS/FM/WMT channels over BTIF, and
   downloads the firmware patch at function-on.
-- Char devices: `/dev/stpwmt` (control, major 190), `/dev/stpbt` (BT HCI,
-  major 192), `/dev/wmtWifi` (WiFi func ctrl, major 155), `/dev/fm` (FM
-  receiver, dynamic major).
+- Char devices: `/dev/stpwmt` (control, major 190), `/dev/stpgps` (GPS,
+  major 191), `/dev/stpbt` (BT HCI, major 192), `/dev/wmtWifi` (WiFi func
+  ctrl, major 155), `/dev/fm` (FM receiver, dynamic major).
 - FM audio leaves CONSYS digitally: the WMT audio-interface command puts it
   in FM-I2S mode, the receiver drives the AFE's I2S input as master at
   32 kHz, and the kernel's AFE driver resamples it onto the downlink.
@@ -62,6 +62,9 @@ The kernel tree the modules build against must provide:
   - `connectivity@18070000` node (`mediatek,mt6572-consys`) with the MCU +
     TOPCKGEN reg ranges, the `conn2ap` wakeup + WDT interrupts, the CONN
     power domain, the TOPRGU `connsys` reset and the four `vcn*` supplies,
+    and on boards with an external GPS LNA the `gps_lna_state_init`,
+    `gps_lna_state_oh` and `gps_lna_state_ol` pinctrl states that drive its
+    enable pin (low, high, low),
   - `wifi@180f0000` node (`mediatek,wifi`, the CONSYS Wi-Fi AHB window,
     GIC SPI 123 level-low) for the wlan driver;
 - `CONFIG_BT=m` core with `CONFIG_BT_HCIVHCI=m`, `CONFIG_BT_HIDP=m`,
@@ -90,7 +93,7 @@ make KDIR=/path/to/tree # or point at any prepared kernel tree
 
 Produces `btif/mtk_btif_drv.ko`, `conn_soc/mtk_stp_wmt_soc.ko`,
 `conn_soc/mtk_stp_bt_soc.ko`, `conn_soc/mtk_wmt_wifi_soc.ko`,
-`wlan/wlan_gen2.ko`, `fmradio/mtk_fm_drv.ko`.
+`conn_soc/mtk_stp_gps_soc.ko`, `wlan/wlan_gen2.ko`, `fmradio/mtk_fm_drv.ko`.
 
 The wlan driver links against cfg80211; with `CONFIG_CFG80211=m` build it
 first (`tools/build-staged-modules.sh` does this, and also stages the
@@ -180,6 +183,47 @@ are in `tools/fm.md`.
 Pairing a classic HID keyboard end-to-end is documented in
 `tools/kbd-pair.md`.
 
+GPS has no bring-up script yet; see [GPS](#gps).
+
+## GPS
+
+- `conn_soc/mtk_stp_gps_soc.ko` provides `/dev/stpgps` (major 191).
+  Opening it turns the WMT GPS function on, powering CONSYS up if nothing
+  else is on, and closing it turns it off again. In between the node
+  carries the raw stream between the GPS firmware and a positioning engine,
+  which does all of the navigation; on its own the firmware stays silent.
+  One opener at a time; a whole-chip reset shows up as `EIO` on read/write
+  and `POLLERR` until the node is reopened.
+- The positioning engine is MediaTek's MNL, which is proprietary and not
+  part of this repository. The one verified is the device's own stock-ROM
+  engine (`/system/xbin/libmnlp_mt6572`, Android 4.2.2), a bionic binary run
+  directly in a chroot of the stock `/system` from the eMMC. It needs
+  `/dev/stpgps`, a writable `/data/misc` for its aiding data and the GPS
+  calibration record from the stock `/data/nvram/APCFG/APRDEB/GPS`; it
+  writes NMEA to `/dev/gps` (a plain file or a pipe will do) and logs through
+  liblog to `/dev/log/main`. `mnld` and the GPS HAL are not needed: started
+  without arguments, the engine positions straight away.
+- An external LNA has to be powered while GPS is on: that is what the
+  `gps_lna_state_*` pinctrl states on the consys node are for. On the
+  PAP5500 DUO (enable on GPIO138) the receiver tracks no satellites without
+  it.
+- Measured on the PAP5500 DUO: a first fix from an empty aiding store in
+  about 50 s, warm starts in about 10 s, up to 10 satellites used at HDOP
+  below 1, and reported satellite elevations and azimuths within a few
+  degrees of the published orbits. Ten minutes of GPS under PSM, alone and
+  with BT traffic (commands and inquiry scans) alongside, logged no STP
+  error and needed no keep-awake hold: the chip sleeps between the
+  once-a-second GPS bursts.
+- Quirks of this 2013 engine:
+  - NMEA dates are exactly 1024 weeks back (GPS week rollover; add 7168
+    days). Time of day and position are not affected.
+  - A stationary receiver's position and speed are held (static
+    navigation).
+  - Ioctl 7 (RTC power-loss flag) answers 0, as stock does. Answering 1
+    makes every start a no-time start: 40-70 s to a fix instead of 10 s.
+- Not done yet: a bring-up script that starts and stops the engine, and an
+  NMEA feed for gpsd with the date corrected.
+
 ## Power management (PSM)
 
 PSM (the firmware's sleep mode) works, but only with all four of these in
@@ -241,6 +285,7 @@ How to run and build each one, and the rules they share, are in
 | `launcher/stp_uart_launcher.c` | resident WMT launcher (`-m 3` = BTIF mode): firmware download + handshake |
 | `btif-lpbk-test.c` | BTIF DMA loopback test (non-blocking) |
 | `stpbt-hci-test.c` | HCI reset smoke test over `/dev/stpbt` |
+| `stpgps-probe.c` | `/dev/stpgps` smoke test: GPS function on/off, the ioctls, single-opener check |
 | `hci-localver.c` | HCI Read Local Version over `/dev/stpbt` |
 | `btup-scan.c` | minimal inquiry scan over `hci0` |
 | `fbcursor.c` | draws a cursor on `/dev/fb0` from an evdev pointer - checks a BT mouse end to end with no display server |

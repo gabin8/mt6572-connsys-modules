@@ -32,6 +32,7 @@ CC="arm-linux-gnueabihf-gcc -static -O2"
 $CC -I tools/launcher -o tools/launcher/mtk_stp_launcher tools/launcher/stp_uart_launcher.c
 $CC -o tools/stpbt-vhci-bridge tools/stpbt-vhci-bridge.c
 $CC -o tools/stpbt-hci-test    tools/stpbt-hci-test.c
+$CC -o tools/stpgps-probe      tools/stpgps-probe.c
 $CC -I fmradio/inc -o tools/fmctl tools/fmctl.c
 # diagnostics, as needed
 $CC -o tools/hci-localver   tools/hci-localver.c
@@ -42,7 +43,8 @@ $CC -o tools/evrep          tools/evrep.c
 ```
 
 `deploy-modules-sd.sh` refuses to run without the launcher,
-`stpbt-hci-test` and `fmctl`, since nothing else provides them.
+`stpbt-hci-test`, `stpgps-probe` and `fmctl`, since nothing else provides
+them.
 
 ## Bring-up
 
@@ -128,6 +130,7 @@ The PSM fix only works with the matching `mtk_stp_wmt_soc.ko` and
 | Tool | Run | Checks |
 |---|---|---|
 | `stpbt-hci-test` | `./stpbt-hci-test` | HCI_Reset over `/dev/stpbt`, waiting for Command Complete with a hard timeout; exit code 0 = alive. `connsys-up.sh` runs it. |
+| `stpgps-probe` | `./stpgps-probe [seconds]` | Opens `/dev/stpgps` (GPS function on), reads the ioctls the positioning engine uses, checks that a second open is refused, then poll-reads. `GPS_PROBE=SILENT` is the healthy result: the GPS firmware stays quiet until an engine talks to it. Needs `mtk_stp_gps_soc.ko` and `mknod /dev/stpgps c 191 0`. |
 | `hci-localver` | `./hci-localver` | HCI Read Local Version over `/dev/stpbt`, printed as raw event bytes |
 | `btif-lpbk-test` | `./btif-lpbk-test [len] [hold_s] [pio]` | The AP-side BTIF block alone: internal loopback, pattern out and back, DMA by default. `pio` forces PIO, `hold_s` keeps the port looped for inspection. Run it with only `mtk_btif_drv.ko` loaded, before `connsys-up.sh`. |
 | `btup-scan` | `./btup-scan` | Brings `hci0` up and runs a ~10 s inquiry with raw HCI ioctls, no BlueZ needed; lists addresses and classes |
