@@ -15,6 +15,7 @@ Module.symvers
 # compiled test/launcher binaries (keep the .c sources)
 tools/btif-lpbk-test
 tools/stpbt-hci-test
+tools/stpgps-probe
 tools/hci-localver
 tools/launcher/mtk_stp_launcher
 tools/stpbt-vhci-bridge

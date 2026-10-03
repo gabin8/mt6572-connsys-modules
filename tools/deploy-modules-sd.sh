@@ -17,6 +17,7 @@ cp "$M/btif/mtk_btif_drv.ko" \
    "$M/conn_soc/mtk_stp_wmt_soc.ko" \
    "$M/conn_soc/mtk_stp_bt_soc.ko" \
    "$M/conn_soc/mtk_wmt_wifi_soc.ko" \
+   "$M/conn_soc/mtk_stp_gps_soc.ko" \
    "$SD/root/connsys/"
 
 # 2. In-tree BT/HID stack -> /root/connsys/bt (kbd-pair.md insmod order)
@@ -76,10 +77,11 @@ fi
 #   arm-linux-gnueabihf-gcc -static -O2 -I tools/launcher \
 #       -o tools/launcher/mtk_stp_launcher tools/launcher/stp_uart_launcher.c
 #   arm-linux-gnueabihf-gcc -static -O2 -o tools/stpbt-hci-test tools/stpbt-hci-test.c
+#   arm-linux-gnueabihf-gcc -static -O2 -o tools/stpgps-probe tools/stpgps-probe.c
 # NOTE: use these glibc builds, NOT backups/connsys-firmware/6620_launcher —
 # that stock binary needs /system/bin/linker (bionic) and fails with a bare
 # "not found" on our rootfs.
-for b in launcher/mtk_stp_launcher stpbt-hci-test; do
+for b in launcher/mtk_stp_launcher stpbt-hci-test stpgps-probe; do
 	[ -f "$M/tools/$b" ] || { echo "MISSING $M/tools/$b — build it (see README)" >&2; exit 1; }
 	install -m 0755 "$M/tools/$b" "$SD/root/connsys/$(basename "$b")"
 done
