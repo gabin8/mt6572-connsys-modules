@@ -700,19 +700,19 @@ static INT32 wmt_plat_gps_lna_ctrl(ENUM_PIN_STATE state)
 	}
 
 	gps_lna_init = pinctrl_lookup_state(consys_pinctrl, "gps_lna_state_init");
-	if (NULL == gps_lna_init) {
+	if (IS_ERR(gps_lna_init)) {
 		WMT_PLAT_ERR_FUNC("Cannot find gps lna pin init state!\n");
 		return -2;
 	}
 
 	gps_lna_oh = pinctrl_lookup_state(consys_pinctrl, "gps_lna_state_oh");
-	if (NULL == gps_lna_oh) {
+	if (IS_ERR(gps_lna_oh)) {
 		WMT_PLAT_ERR_FUNC("Cannot find gps lna pin oh state!\n");
 		return -3;
 	}
 
 	gps_lna_ol = pinctrl_lookup_state(consys_pinctrl, "gps_lna_state_ol");
-	if (NULL == gps_lna_ol) {
+	if (IS_ERR(gps_lna_ol)) {
 		WMT_PLAT_ERR_FUNC("Cannot find gps lna pin ol state!\n");
 		return -4;
 	}
