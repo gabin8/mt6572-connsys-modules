@@ -1745,6 +1745,17 @@ static INT32 opfunc_hw_rst(P_WMT_OP pWmtOp)
 	unsigned long ctrlPa2;
 
 	wmt_core_dump_func_state("BE HW RST");
+	/*
+	 * The reset ends GPS without its func_off, which is what drops the
+	 * host-driven LNA enable: drop it here, or the LNA stays powered until
+	 * the next GPS session. Only the pin; the rest of the GPS pre-off
+	 * talks to the chip, which is gone.
+	 */
+	if (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_GPS] == DRV_STS_FUNC_ON) {
+		ctrlPa1 = 0;
+		ctrlPa2 = 0;
+		wmt_core_ctrl(WMT_CTRL_GPS_LNA_SET, &ctrlPa1, &ctrlPa2);
+	}
     /*-->Reset WMT  data structure*/
 	/* gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_BT]   = DRV_STS_POWER_OFF; */
 	gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_FM] = DRV_STS_POWER_OFF;
