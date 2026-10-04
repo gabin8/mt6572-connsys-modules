@@ -330,7 +330,7 @@ INT32 wmt_core_tx(const PUINT8 pData, const UINT32 size, PUINT32 writtenSize, co
 	return iRet;
 }
 
-INT32 wmt_core_rx(PUINT8 pBuf, UINT32 bufLen, UINT32 *readSize)
+static INT32 wmt_core_rx_timeout(PUINT8 pBuf, UINT32 bufLen, UINT32 *readSize, UINT32 timeoutMs)
 {
 	INT32 iRet;
 	WMT_CTRL_DATA ctrlData;
@@ -339,6 +339,7 @@ INT32 wmt_core_rx(PUINT8 pBuf, UINT32 bufLen, UINT32 *readSize)
 	ctrlData.au4CtrlData[0] = (SIZE_T) pBuf;
 	ctrlData.au4CtrlData[1] = bufLen;
 	ctrlData.au4CtrlData[2] = (SIZE_T) readSize;
+	ctrlData.au4CtrlData[3] = timeoutMs;
 
 	iRet = wmt_ctrl(&ctrlData);
 	if (iRet) {
@@ -348,6 +349,11 @@ INT32 wmt_core_rx(PUINT8 pBuf, UINT32 bufLen, UINT32 *readSize)
 		osal_assert(0);
 	}
 	return iRet;
+}
+
+INT32 wmt_core_rx(PUINT8 pBuf, UINT32 bufLen, UINT32 *readSize)
+{
+	return wmt_core_rx_timeout(pBuf, bufLen, readSize, WMT_LIB_RX_TIMEOUT);
 }
 
 INT32 wmt_core_rx_flush(UINT32 type)
@@ -1185,8 +1191,18 @@ static INT32 opfunc_pwr_sv(P_WMT_OP pWmtOp)
 
 	typedef INT32(*STP_PSM_CB) (INT32);
 	STP_PSM_CB psm_cb = NULL;
+	SIZE_T action = pWmtOp->au4OpData[0];
 
-	if (SLEEP == pWmtOp->au4OpData[0]) {
+	/*
+	 * The PSM queue folds WAKEUP and HOST_AWAKE into one request, but the
+	 * wire differs: a chip that raised its wake interrupt waits for the
+	 * HOST_AWAKE exchange, and a sleeping chip that did not never answers
+	 * it. Decide here, at send time. psm_cb still gets the queued action.
+	 */
+	if (action == WAKEUP || action == HOST_AWAKE)
+		action = wmt_lib_ps_chip_wake_req() ? HOST_AWAKE : WAKEUP;
+
+	if (SLEEP == action) {
 		WMT_DBG_FUNC("**** Send sleep command\n");
 		/* mtk_wcn_stp_set_psm_state(ACT_INACT); */
 		/* (*kal_stp_flush_rx)(WMT_TASK_INDX); */
@@ -1198,7 +1214,7 @@ static INT32 opfunc_pwr_sv(P_WMT_OP pWmtOp)
 		}
 
 		evt_len = sizeof(WMT_SLEEP_EVT);
-		ret = wmt_core_rx(evt_buf, evt_len, &u4_result);
+		ret = wmt_core_rx_timeout(evt_buf, evt_len, &u4_result, WMT_PSM_RX_TIMEOUT);
 		if (ret || (u4_result != evt_len)) {
 			unsigned long type = WMTDRV_TYPE_WMT;
 			unsigned long reason = 33;
@@ -1239,8 +1255,9 @@ static INT32 opfunc_pwr_sv(P_WMT_OP pWmtOp)
 			goto pwr_sv_done;
 		} else {
 			WMT_DBG_FUNC("Send sleep command OK!\n");
+			wmt_lib_ps_sleep_done();
 		}
-	} else if (pWmtOp->au4OpData[0] == WAKEUP) {
+	} else if (action == WAKEUP) {
 		WMT_DBG_FUNC("wakeup connsys by btif");
 
 		ret = wmt_core_ctrl(WMT_CTRL_SOC_WAKEUP_CONSYS, &ctrlPa1, &ctrlPa2);
@@ -1260,7 +1277,7 @@ static INT32 opfunc_pwr_sv(P_WMT_OP pWmtOp)
 		}
 #endif
 		evt_len = sizeof(WMT_WAKEUP_EVT);
-		ret = wmt_core_rx(evt_buf, evt_len, &u4_result);
+		ret = wmt_core_rx_timeout(evt_buf, evt_len, &u4_result, WMT_PSM_RX_TIMEOUT);
 		if (ret || (u4_result != evt_len)) {
 			unsigned long type = WMTDRV_TYPE_WMT;
 			unsigned long reason = 34;
@@ -1300,8 +1317,9 @@ static INT32 opfunc_pwr_sv(P_WMT_OP pWmtOp)
 			goto pwr_sv_done;
 		} else {
 			WMT_DBG_FUNC("Send wakeup command OK!\n");
+			wmt_lib_ps_awake_done();
 		}
-	} else if (pWmtOp->au4OpData[0] == HOST_AWAKE) {
+	} else if (action == HOST_AWAKE) {
 
 		WMT_DBG_FUNC("**** Send host awake command\n");
 
@@ -1315,7 +1333,7 @@ static INT32 opfunc_pwr_sv(P_WMT_OP pWmtOp)
 		}
 
 		evt_len = sizeof(WMT_HOST_AWAKE_EVT);
-		ret = wmt_core_rx(evt_buf, evt_len, &u4_result);
+		ret = wmt_core_rx_timeout(evt_buf, evt_len, &u4_result, WMT_PSM_RX_TIMEOUT);
 		if (ret || (u4_result != evt_len)) {
 			unsigned long type = WMTDRV_TYPE_WMT;
 			unsigned long reason = 35;
@@ -1356,6 +1374,7 @@ static INT32 opfunc_pwr_sv(P_WMT_OP pWmtOp)
 			/* goto pwr_sv_done; */
 		} else {
 			WMT_DBG_FUNC("Send host awake command OK!\n");
+			wmt_lib_ps_awake_done();
 		}
 	}
 pwr_sv_done:

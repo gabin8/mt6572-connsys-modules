@@ -681,6 +681,41 @@ static MTK_WCN_BOOL wmt_lib_ps_do_wakeup(VOID)
 	return wmt_lib_ps_action(WAKEUP);
 }
 
+/*
+ * Set when the chip raised its wake interrupt (BGF EINT) since it went to
+ * sleep: it is then awake and waits for the HOST_AWAKE exchange. Cleared
+ * when a wake exchange or a sleep completes.
+ */
+static atomic_t gPsChipWakeReq = ATOMIC_INIT(0);
+
+/*
+ * The PSM queue treats WAKEUP and HOST_AWAKE as one request, so whichever was
+ * queued, wmtd asks here which exchange the chip actually needs.
+ */
+MTK_WCN_BOOL wmt_lib_ps_chip_wake_req(VOID)
+{
+	if (atomic_read(&gPsChipWakeReq))
+		return MTK_WCN_BOOL_TRUE;
+	return wmt_plat_bgf_eint_asserted();
+}
+
+VOID wmt_lib_ps_awake_done(VOID)
+{
+	atomic_set(&gPsChipWakeReq, 0);
+}
+
+/*
+ * Arm the wake interrupt only once the chip has acknowledged the sleep: armed
+ * any earlier, a request made while it was still awake would answer a
+ * sleeping chip with HOST_AWAKE. The line is level-triggered, so a request
+ * still pending at this point fires as soon as it is enabled.
+ */
+VOID wmt_lib_ps_sleep_done(VOID)
+{
+	atomic_set(&gPsChipWakeReq, 0);
+	wmt_plat_eirq_ctrl(PIN_BGF_EINT, PIN_STA_EINT_EN);
+}
+
 static MTK_WCN_BOOL wmt_lib_ps_do_host_awake(VOID)
 {
 	/* Answer a chip-initiated wake (BGF EINT) with the HOST_AWAKE command
@@ -713,13 +748,8 @@ static INT32 wmt_lib_ps_handler(MTKSTP_PSM_ACTION_T action)
 		WMT_DBG_FUNC("send op-----------> sleep job\n");
 
 		if (!mtk_wcn_stp_is_sdio_mode()) {
+			/* the wake interrupt is armed when the sleep completes */
 			ret = wmt_lib_ps_do_sleep();
-			WMT_DBG_FUNC("enable host eirq\n");
-			wmt_plat_eirq_ctrl(PIN_BGF_EINT, PIN_STA_EINT_EN);
-#if CFG_WMT_DUMP_INT_STATUS
-			if (MTK_WCN_BOOL_TRUE == wmt_plat_dump_BGF_irq_status())
-				wmt_plat_BGF_irq_dump_status();
-#endif
 		} else {
 			/* ret = mtk_wcn_stp_sdio_do_own_set(); */
 			if (sdio_own_ctrl) {
@@ -847,6 +877,7 @@ MTK_WCN_BOOL wmt_lib_is_quick_ps_support(VOID)
 VOID wmt_lib_ps_irq_cb(VOID)
 {
 #if CFG_WMT_PS_SUPPORT
+	atomic_set(&gPsChipWakeReq, 1);
 	wmt_lib_ps_handler(EIRQ);
 #else
 	WMT_DBG_FUNC("CFG_WMT_PS_SUPPORT is not set\n");

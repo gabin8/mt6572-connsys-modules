@@ -24,6 +24,7 @@
 ********************************************************************************
 */
 #include <linux/delay.h>
+#include <linux/interrupt.h>
 #include <linux/pinctrl/consumer.h>
 
 /* ALPS header files */
@@ -469,6 +470,24 @@ INT32 wmt_plat_pwr_ctrl(ENUM_FUNC_STATE state)
 }
 EXPORT_SYMBOL(wmt_plat_pwr_ctrl);
 
+static INT32 bgf_irq_num = -1;
+
+/*
+ * Is the chip holding its wake line (BGF EINT) asserted right now? Read from
+ * the interrupt controller, so it also answers while the interrupt is
+ * disabled.
+ */
+MTK_WCN_BOOL wmt_plat_bgf_eint_asserted(VOID)
+{
+	bool pending;
+
+	if (bgf_irq_num < 0 ||
+	    irq_get_irqchip_state(bgf_irq_num, IRQCHIP_STATE_PENDING, &pending))
+		return MTK_WCN_BOOL_FALSE;
+
+	return pending ? MTK_WCN_BOOL_TRUE : MTK_WCN_BOOL_FALSE;
+}
+
 INT32 wmt_plat_eirq_ctrl(ENUM_PIN_ID id, ENUM_PIN_STATE state)
 {
 #ifdef CONFIG_OF
@@ -476,7 +495,6 @@ INT32 wmt_plat_eirq_ctrl(ENUM_PIN_ID id, ENUM_PIN_STATE state)
 	unsigned int irq_info[3] = { 0, 0, 0 };
 #endif
 	INT32 iret = -EINVAL;
-	static INT32 bgf_irq_num = -1;
 	static UINT32 bgf_irq_flag;
 	/* TODO: [ChangeFeature][GeorgeKuo]: use another function to handle this, as done in gpio_ctrls */
 

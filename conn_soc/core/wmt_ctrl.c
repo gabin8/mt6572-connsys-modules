@@ -252,7 +252,7 @@ INT32 wmt_ctrl_rx(P_WMT_CTRL_DATA pWmtCtrlData /*UINT8 *pBuff, UINT32 buffLen, U
 		* osal_test_bit(WMT_STAT_RX, &pdev->state),
 		* msecs_to_jiffies(WMT_LIB_RX_TIMEOUT));
 		*/
-		pDev->rWmtRxWq.timeoutValue = WMT_LIB_RX_TIMEOUT;
+		pDev->rWmtRxWq.timeoutValue = pWmtCtrlData->au4CtrlData[3];
 		/* waitRet = osal_wait_for_event_bit_timeout(&pDev->rWmtRxWq, &pDev->state, WMT_STAT_RX); */
 		waitRet = wmt_dev_rx_timeout(&pDev->rWmtRxWq);
 

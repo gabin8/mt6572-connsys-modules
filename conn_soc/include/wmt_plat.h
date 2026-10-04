@@ -255,6 +255,8 @@ INT32 wmt_plat_gpio_ctrl(ENUM_PIN_ID id, ENUM_PIN_STATE state);
 
 INT32 wmt_plat_eirq_ctrl(ENUM_PIN_ID id, ENUM_PIN_STATE state);
 
+MTK_WCN_BOOL wmt_plat_bgf_eint_asserted(VOID);
+
 INT32 wmt_plat_wake_lock_ctrl(ENUM_WL_OP opId);
 
 INT32 wmt_plat_audio_ctrl(CMB_STUB_AIF_X state, CMB_STUB_AIF_CTRL ctrl);

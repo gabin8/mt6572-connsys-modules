@@ -56,6 +56,12 @@ typedef enum _ENUM_WMTRSTRET_TYPE_T {
 */
 #define WMT_LIB_RX_TIMEOUT 20000	/*800-->cover v1.2phone BT function on time (~830ms) */
 /*
+ * Power-save events get the 2 s stock waits for every WMT event, inside the
+ * PSM's 6 s window: a lost event then fails the PSM op instead of leaving
+ * the state machine waiting on a reply that would only time out after 20 s.
+ */
+#define WMT_PSM_RX_TIMEOUT 2000
+/*
 open wifi during wifi power on procedure
 (because wlan is insert to system after mtk_hif_sdio module,
 so wifi card is not registered to hif module
@@ -226,6 +232,9 @@ extern INT32 wmt_lib_ps_ctrl(UINT32 state);
 
 extern INT32 wmt_lib_ps_disable(VOID);
 extern VOID wmt_lib_ps_irq_cb(VOID);
+extern MTK_WCN_BOOL wmt_lib_ps_chip_wake_req(VOID);
+extern VOID wmt_lib_ps_awake_done(VOID);
+extern VOID wmt_lib_ps_sleep_done(VOID);
 #endif
 extern VOID wmt_lib_ps_set_sdio_psop(PF_WMT_SDIO_PSOP own_cb);
 
