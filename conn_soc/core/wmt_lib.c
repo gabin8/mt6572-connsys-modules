@@ -141,6 +141,26 @@ void wmt_lib_psm_lock_release(void)
 	osal_unlock_sleepable_lock(&gDevWmt.psm_lock);
 }
 
+#if CFG_WMT_PS_SUPPORT
+/*
+ * A WMT op runs between DISABLE_PSM_MONITOR() and ENABLE_PSM_MONITOR() with
+ * the chip awake and the PSM monitor stopped. A PSM policy change landing in
+ * between (wmt_dbg "0 x" from the BT governor, the last keep-awake dropped,
+ * the PSM enable at the end of chip init) restarted the monitor, so the chip
+ * could go to sleep under the op: its command reached a sleeping chip and
+ * wmtd sat out the whole RX timeout, holding up the wake the chip then asked
+ * for. While an op is in flight a policy change only records the policy, and
+ * ENABLE_PSM_MONITOR() applies it. gPsPolicyLock covers the flag and the PSM
+ * calls, never a whole op, so the Wi-Fi remove callback, which runs inside
+ * the Wi-Fi off op, can still take it.
+ */
+static DEFINE_MUTEX(gPsPolicyLock);
+static bool gPsOpBusy;
+
+static INT32 wmt_lib_ps_enable_locked(VOID);
+static INT32 wmt_lib_ps_disable_locked(VOID);
+#endif
+
 INT32 DISABLE_PSM_MONITOR(void)
 {
 	INT32 ret = 0;
@@ -152,7 +172,10 @@ INT32 DISABLE_PSM_MONITOR(void)
 		return ret;
 	}
 #if CFG_WMT_PS_SUPPORT
-	ret = wmt_lib_ps_disable();
+	mutex_lock(&gPsPolicyLock);
+	ret = wmt_lib_ps_disable_locked();
+	gPsOpBusy = !ret;
+	mutex_unlock(&gPsPolicyLock);
 	if (ret) {
 		WMT_ERR_FUNC("wmt_lib_ps_disable fail, ret=%d\n", ret);
 		wmt_lib_psm_lock_release();
@@ -165,7 +188,10 @@ INT32 DISABLE_PSM_MONITOR(void)
 void ENABLE_PSM_MONITOR(void)
 {
 #if CFG_WMT_PS_SUPPORT
-	wmt_lib_ps_enable();
+	mutex_lock(&gPsPolicyLock);
+	gPsOpBusy = false;
+	wmt_lib_ps_enable_locked();
+	mutex_unlock(&gPsPolicyLock);
 #endif
 	/* osal_unlock_sleepable_lock(&gDevWmt.psm_lock); */
 	wmt_lib_psm_lock_release();
@@ -464,17 +490,31 @@ INT32 wmt_lib_ps_set_idle_time(UINT32 psIdleTime)
 
 INT32 wmt_lib_ps_ctrl(UINT32 state)
 {
+	guard(mutex)(&gPsPolicyLock);
+
 	if (0 == state) {
-		wmt_lib_ps_disable();
+		if (!gPsOpBusy)
+			wmt_lib_ps_disable_locked();
 		gPsEnable = 0;
 	} else {
 		gPsEnable = 1;
-		wmt_lib_ps_enable();
+		if (!gPsOpBusy)
+			wmt_lib_ps_enable_locked();
 	}
 	return 0;
 }
 
+/* deferred while an op is in flight: ENABLE_PSM_MONITOR() applies it */
 INT32 wmt_lib_ps_enable(VOID)
+{
+	guard(mutex)(&gPsPolicyLock);
+
+	if (gPsOpBusy)
+		return 0;
+	return wmt_lib_ps_enable_locked();
+}
+
+static INT32 wmt_lib_ps_enable_locked(VOID)
 {
 	if (atomic_read(&gPsHold)) {
 		pr_info_ratelimited("wmt: PSM enable deferred, %d keep-awake ref(s) held\n",
@@ -496,9 +536,13 @@ INT32 wmt_lib_ps_enable(VOID)
  */
 INT32 mtk_wcn_wmt_psm_hold(VOID)
 {
+	guard(mutex)(&gPsPolicyLock);
+
 	if (atomic_inc_return(&gPsHold) == 1) {
 		pr_info_ratelimited("wmt: keep-awake taken, forcing PSM off\n");
-		mtk_wcn_stp_psm_disable();
+		/* an op in flight already holds the monitor off */
+		if (!gPsOpBusy)
+			mtk_wcn_stp_psm_disable();
 	}
 	return 0;
 }
@@ -506,7 +550,10 @@ EXPORT_SYMBOL(mtk_wcn_wmt_psm_hold);
 
 INT32 mtk_wcn_wmt_psm_release(VOID)
 {
-	INT32 left = atomic_dec_return(&gPsHold);
+	INT32 left;
+
+	guard(mutex)(&gPsPolicyLock);
+	left = atomic_dec_return(&gPsHold);
 
 	if (left < 0) {
 		pr_err("wmt: keep-awake underflow, clamping\n");
@@ -515,13 +562,24 @@ INT32 mtk_wcn_wmt_psm_release(VOID)
 	}
 	if (left == 0) {
 		pr_info_ratelimited("wmt: keep-awake dropped, PSM back under policy\n");
-		wmt_lib_ps_enable();
+		if (!gPsOpBusy)
+			wmt_lib_ps_enable_locked();
 	}
 	return 0;
 }
 EXPORT_SYMBOL(mtk_wcn_wmt_psm_release);
 
+/* skipped while an op is in flight: the op already holds the monitor off */
 INT32 wmt_lib_ps_disable(VOID)
+{
+	guard(mutex)(&gPsPolicyLock);
+
+	if (gPsOpBusy)
+		return 0;
+	return wmt_lib_ps_disable_locked();
+}
+
+static INT32 wmt_lib_ps_disable_locked(VOID)
 {
 	if (gPsEnable)
 		return mtk_wcn_stp_psm_disable();
