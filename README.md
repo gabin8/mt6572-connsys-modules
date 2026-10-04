@@ -23,7 +23,7 @@ out-of-tree modules in the spirit of
 | BT + WiFi together | working — inquiry alongside traffic, no assert; costs Wi-Fi latency |
 | WiFi AP / P2P (Wi-Fi Direct) | not started — hardware and firmware support it, driver sources are in git history (see [AP / P2P](#ap--p2p)) |
 | FM receiver (`fmradio/` MT6627 driver → `/dev/fm`) | working — tune, scan/seek, RDS (PI, station name, radio text), audio to the headphones through the AFE's CONSYS I2S input, recording and streaming through the AFE's capture device; the headphone cable is the antenna |
-| GPS (`conn_soc/` → `/dev/stpgps`) | working — first fix in about 50 s from an empty aiding store, about 10 s warm, with the device's own stock positioning engine; PSM-safe alongside BT. No bring-up script or gpsd feed yet (see [GPS](#gps)) |
+| GPS (`conn_soc/` → `/dev/stpgps`) | working — first fix in about 50 s from an empty aiding store, about 10 s warm, with the device's own stock positioning engine; holds the chip awake while open, alongside BT. No bring-up script or gpsd feed yet (see [GPS](#gps)) |
 
 Verified on the Prestigio PAP5500 DUO; the Lenovo A369i carries the same
 silicon.
@@ -194,6 +194,11 @@ GPS has no bring-up script yet; see [GPS](#gps).
   which does all of the navigation; on its own the firmware stays silent.
   One opener at a time; a whole-chip reset shows up as `EIO` on read/write
   and `POLLERR` until the node is reopened.
+- While the node is open it holds the chip awake (the keep-awake reference
+  Wi-Fi uses), and PSM goes back to its policy on close: GPS streams once a
+  second, which under the 30 ms idle timer would be a sleep/wake handshake
+  every second for as long as the receiver is on. A whole-chip reset during
+  a session drops the GPS LNA enable as well.
 - The positioning engine is MediaTek's MNL, which is proprietary and not
   part of this repository. The one verified is the device's own stock-ROM
   engine (`/system/xbin/libmnlp_mt6572`, Android 4.2.2), a bionic binary run
@@ -210,10 +215,8 @@ GPS has no bring-up script yet; see [GPS](#gps).
 - Measured on the PAP5500 DUO: a first fix from an empty aiding store in
   about 50 s, warm starts in about 10 s, up to 10 satellites used at HDOP
   below 1, and reported satellite elevations and azimuths within a few
-  degrees of the published orbits. Ten minutes of GPS under PSM, alone and
-  with BT traffic (commands and inquiry scans) alongside, logged no STP
-  error and needed no keep-awake hold: the chip sleeps between the
-  once-a-second GPS bursts.
+  degrees of the published orbits. BT keeps working alongside GPS: BT
+  commands and inquiry scans during a GPS session all succeeded.
 - Quirks of this 2013 engine:
   - NMEA dates are exactly 1024 weeks back (GPS week rollover; add 7168
     days). Time of day and position are not affected.
@@ -263,6 +266,28 @@ Additionally, chip-initiated wakes (BGF EINT) must be answered with the
 `HOST_AWAKE` command exchange, not the `WAKEUP` pulse — the stock remap in
 `wmt_lib_ps_do_host_awake()` wedges this firmware on the first inbound
 event; this tree carries the fix.
+
+Two races in the stock sleep/wake handling are fixed as well. Both ended in
+a PSM wait timeout and a whole-chip reset:
+
+- **The wrong wake exchange.** A chip that raised its wake interrupt waits
+  for `HOST_AWAKE`; a sleeping chip that did not answers only the `WAKEUP`
+  pulse, so `HOST_AWAKE` sent to it times out (`read HOST_AWAKE_EVT fail`).
+  The PSM queue folds the two requests into one, and stock armed the wake
+  interrupt as soon as a sleep was queued, before the chip had acknowledged
+  it, so a request near a sleep/wake transition could get the wrong
+  exchange. wmtd now picks the exchange when it sends it, from whether the
+  chip asked (the interrupt fired, or the line is still asserted); the
+  interrupt is armed once the chip has acknowledged the sleep; and
+  power-save events get the 2 s wait stock uses for every event (20 s
+  here), inside the PSM's 6 s window.
+- **PSM switched on under a WMT command.** WMT commands run with the PSM
+  monitor stopped, but a PSM policy change in the middle of one (the BT
+  governor's `0 1e`, the last keep-awake dropped, the enable at the end of
+  chip init) restarted it: the chip went to sleep under the command, wmtd
+  waited out the whole RX timeout, and the chip's own wake request queued
+  behind it. A policy change during a command is now recorded and applied
+  when the command ends.
 
 `tools/psm-sleep-probe.sh` verifies wake-from-sleep across ascending idle
 windows (10 s → 360 s) and stops at the first failure.
