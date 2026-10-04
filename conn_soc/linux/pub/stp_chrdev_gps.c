@@ -176,6 +176,12 @@ static long gps_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	}
 }
 
+/*
+ * GPS streams once a second, which under the 30 ms PSM idle timer is a
+ * sleep/wake handshake every second for as long as the receiver is on. Keep
+ * the chip awake while the node is open, as Wi-Fi does while busy; PSM goes
+ * back to its policy on close.
+ */
 static int gps_open(struct inode *inode, struct file *filp)
 {
 	guard(mutex)(&gps_open_lock);
@@ -184,14 +190,18 @@ static int gps_open(struct inode *inode, struct file *filp)
 	if (gps_opened)
 		return -EBUSY;
 
+	mtk_wcn_wmt_psm_hold();
+
 	if (mtk_wcn_wmt_func_on(WMTDRV_TYPE_GPS) == MTK_WCN_BOOL_FALSE) {
 		pr_err("WMT turn on GPS failed\n");
+		mtk_wcn_wmt_psm_release();
 		return -ENODEV;
 	}
 
 	if (!mtk_wcn_stp_is_ready()) {
 		pr_err("STP is not ready\n");
 		mtk_wcn_wmt_func_off(WMTDRV_TYPE_GPS);
+		mtk_wcn_wmt_psm_release();
 		return -ENODEV;
 	}
 
@@ -218,6 +228,7 @@ static int gps_release(struct inode *inode, struct file *filp)
 	else
 		pr_info("GPS off\n");
 
+	mtk_wcn_wmt_psm_release();
 	gps_opened = false;
 
 	return 0;
