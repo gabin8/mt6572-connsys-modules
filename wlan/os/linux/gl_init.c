@@ -3535,9 +3535,13 @@ static int initWlan(void)
 	for (i = 0; i < DBG_MODULE_NUM; i++)
 		aucDebugModule[i] = DBG_CLASS_MASK; /* enable all */
 #else
-	/* Initial debug level is D1 */
+	/*
+	 * Errors and warnings only: INFO logs every ICMP/DHCP/EAPOL frame and
+	 * STATE every scan step. Raise at runtime with
+	 * echo 0x<module>:0x<classes> > /proc/net/wlan/dbgLevel (0xFF = all).
+	 */
 	for (i = 0; i < DBG_MODULE_NUM; i++)
-		aucDebugModule[i] = DBG_CLASS_ERROR | DBG_CLASS_WARN | DBG_CLASS_INFO | DBG_CLASS_STATE;
+		aucDebugModule[i] = DBG_CLASS_ERROR | DBG_CLASS_WARN;
 #endif /* DBG */
 	DBGLOG(INIT, INFO, "initWlan\n");
 
