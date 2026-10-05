@@ -227,8 +227,8 @@ and `tools/README.md`.
     makes every start a no-time start: 40-70 s to a fix instead of 10 s.
 - `tools/gps-up.sh` runs the engine on demand: engine → FIFO →
   `tools/gps-nmea` (the RMC date moved forward 1024 weeks, spoofed fixes
-  withheld when the clock is set) → gpsd on localhost:2947. Details in
-  `tools/README.md`.
+  withheld; an unset clock taken from the first fix that does not look
+  foreign) → gpsd on localhost:2947. Details in `tools/README.md`.
 
 ## Power management (PSM)
 

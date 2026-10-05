@@ -8,10 +8,16 @@
 //    whose satellite date or time is more than MAX_SKEW s off the clock has
 //    its position sentences withheld: such a signal carries a foreign time,
 //    which is what a spoofer sends. Satellite views (GSV) still pass.
+//  - with -c STAMP and the clock unset (after a battery pull), the first fix
+//    sets the clock and the RTC, unless it looks foreign: more than
+//    MAX_INVIEW satellites in view, or a time before the clock last seen set
+//    (STAMP, else the build date) or more than MAX_GAP after it. A foreign-
+//    looking fix is withheld instead. STAMP records each clock taken.
+//    Without -c an unset clock passes fixes unchecked.
 // The input or output going away (engine restart, gpsd closing the device)
 // just reopens it. Only state changes are logged, to stderr.
 //
-// Usage: gps-nmea IN OUT    ("-" = stdin / stdout)
+// Usage: gps-nmea [-c STAMP] IN OUT    ("-" = stdin / stdout)
 //
 // Build: arm-linux-gnueabihf-gcc -static -O2 -o gps-nmea gps-nmea.c
 
@@ -22,6 +28,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -29,10 +37,13 @@
 #define ROLLOVER	(1024 * 7 * 86400L)	// one GPS week-number era
 #define LINE_MAX_LEN	256			// the engine caps its sentences here
 #define EPOCH_LINES	32
+#define MAX_INVIEW	16	// a GPS-only sky shows about 14 at most
+#define MAX_GAP		(90 * 86400L)	// s past the clock last seen set
 
-enum check { CHECK_NONE, CHECK_OK, CHECK_FOREIGN, CHECK_UNSET };
+enum check { CHECK_NONE, CHECK_OK, CHECK_FOREIGN, CHECK_UNSET, CHECK_REFUSED };
 
-static const char *in_path, *out_path;
+static const char *in_path, *out_path, *stamp_path;
+static int inview;
 static FILE *in, *out;
 static time_t built;
 static enum check state = CHECK_NONE;
@@ -99,6 +110,13 @@ static FILE *open_out(void)
 	}
 	setvbuf(f, NULL, _IOLBF, 0);
 	return f;
+}
+
+static int is_fifo(FILE *f)
+{
+	struct stat st;
+
+	return !fstat(fileno(f), &st) && S_ISFIFO(st.st_mode);
 }
 
 static void emit(const char *line)
@@ -201,7 +219,7 @@ static void rmc_set_date(char *line, const char *date)
 	strcpy(line, out_line);
 }
 
-static void set_state(enum check s, time_t gps, long skew)
+static void set_state(enum check s, time_t gps, long skew, const char *why)
 {
 	char g[32];
 
@@ -215,17 +233,87 @@ static void set_state(enum check s, time_t gps, long skew)
 		logmsg("foreign time: satellites say %s UTC, %+ld s off the clock; "
 		       "withholding fixes", g, skew);
 	else if (s == CHECK_UNSET)
-		logmsg("system clock not set: fixes pass unchecked");
+		logmsg("system clock not set: fixes pass unchecked%s%s",
+		       why ? "; " : "", why ? why : "");
+	else if (s == CHECK_REFUSED)
+		logmsg("clock not set: satellites say %s UTC, %s; withholding fixes "
+		       "(set the clock by hand: date -u -s ...; hwclock -w -u)", g, why);
+}
+
+// the clock last seen set: the stamp, or this tool's build date
+static time_t reference(void)
+{
+	long long t;
+	time_t ref = built;
+	FILE *f = fopen(stamp_path, "r");
+
+	if (f) {
+		if (fscanf(f, "%lld", &t) == 1 && (time_t)t > ref)
+			ref = (time_t)t;
+		fclose(f);
+	}
+	return ref;
+}
+
+static void save_stamp(time_t t)
+{
+	char tmp[256];
+	FILE *f;
+
+	snprintf(tmp, sizeof(tmp), "%s.new", stamp_path);
+	f = fopen(tmp, "w");
+	if (!f)
+		return;
+	fprintf(f, "%lld\n", (long long)t);
+	if (fclose(f) == 0)
+		rename(tmp, stamp_path);
+}
+
+// The clock is unset: take it from this fix, unless the fix looks foreign.
+// Returns 1 once the clock is set.
+static int take_clock(time_t gps)
+{
+	struct timeval tv = { .tv_sec = gps };
+	time_t ref = reference();
+	char why[96], r[32], g[32];
+
+	strftime(r, sizeof(r), "%Y-%m-%d %H:%M", gmtime(&ref));
+	if (inview > MAX_INVIEW)
+		snprintf(why, sizeof(why), "%d in view, more than a GPS-only sky shows", inview);
+	else if (gps < ref)
+		snprintf(why, sizeof(why), "earlier than the clock last seen set (%s)", r);
+	else if (gps > ref + MAX_GAP)
+		snprintf(why, sizeof(why), "over 90 days after the clock last seen set (%s)", r);
+	else
+		why[0] = '\0';
+	if (why[0]) {
+		withhold = 1;
+		set_state(CHECK_REFUSED, gps, 0, why);
+		return 0;
+	}
+	if (settimeofday(&tv, NULL)) {
+		withhold = 0;
+		snprintf(why, sizeof(why), "cannot set it: %s", strerror(errno));
+		set_state(CHECK_UNSET, gps, 0, why);
+		return 0;
+	}
+	if (system("hwclock -w -u") != 0)
+		logmsg("hwclock -w -u failed: the RTC keeps its old time");
+	save_stamp(gps);
+	strftime(g, sizeof(g), "%Y-%m-%d %H:%M:%S", gmtime(&gps));
+	logmsg("clock set from the satellites: %s UTC (%d in view), RTC written", g, inview);
+	return 1;
 }
 
 // decide the epoch on its RMC, and move the RMC date out of the old era
 static void judge_rmc(char *line)
 {
-	char date[16], hms[16], fixed[8];
+	char date[16], hms[16], status[4], fixed[8];
 	time_t gps, now = time(NULL);
 	struct tm tm;
 
-	if (field(line, 9, date, sizeof(date)) || field(line, 1, hms, sizeof(hms)))
+	if (field(line, 9, date, sizeof(date)) || field(line, 1, hms, sizeof(hms)) ||
+	    field(line, 2, status, sizeof(status)))
 		return;
 	gps = rmc_time(date, hms);
 	if (!gps)
@@ -233,16 +321,24 @@ static void judge_rmc(char *line)
 	gmtime_r(&gps, &tm);
 	strftime(fixed, sizeof(fixed), "%d%m%y", &tm);
 	rmc_set_date(line, fixed);
-	// checked with or without a fix: gpsd takes the time from either
 	if (now < built) {
-		withhold = 0;
-		set_state(CHECK_UNSET, gps, 0);
-	} else if (labs((long)(gps - now)) > MAX_SKEW) {
+		if (!stamp_path) {
+			withhold = 0;
+			set_state(CHECK_UNSET, gps, 0, NULL);
+			return;
+		}
+		// the clock comes from a fix, not from a time alone
+		if (status[0] != 'A' || !take_clock(gps))
+			return;
+		now = time(NULL);
+	}
+	// checked with or without a fix: gpsd takes the time from either
+	if (labs((long)(gps - now)) > MAX_SKEW) {
 		withhold = 1;
-		set_state(CHECK_FOREIGN, gps, (long)(gps - now));
+		set_state(CHECK_FOREIGN, gps, (long)(gps - now), NULL);
 	} else {
 		withhold = 0;
-		set_state(CHECK_OK, gps, (long)(gps - now));
+		set_state(CHECK_OK, gps, (long)(gps - now), NULL);
 	}
 }
 
@@ -270,6 +366,12 @@ static void handle(char *line)
 		flush_pending();
 		decided = 0;
 	}
+	if (is_type(line, "GSV")) {
+		char n[8];
+
+		if (!field(line, 3, n, sizeof(n)))
+			inview = atoi(n);	// satellites in view, in every GSV
+	}
 	if (is_type(line, "RMC")) {
 		judge_rmc(line);
 		flush_pending();
@@ -290,13 +392,21 @@ static void handle(char *line)
 int main(int argc, char **argv)
 {
 	char line[LINE_MAX_LEN + 2];
+	int opt;
 
-	if (argc != 3) {
-		fprintf(stderr, "usage: %s IN OUT   (\"-\" = stdin / stdout)\n", argv[0]);
+	while ((opt = getopt(argc, argv, "c:")) != -1) {
+		if (opt != 'c')
+			goto usage;
+		stamp_path = optarg;
+	}
+	if (argc - optind != 2) {
+usage:
+		fprintf(stderr, "usage: %s [-c STAMP] IN OUT   (\"-\" = stdin / stdout)\n",
+			argv[0]);
 		return 2;
 	}
-	in_path = argv[1];
-	out_path = argv[2];
+	in_path = argv[optind];
+	out_path = argv[optind + 1];
 	built = build_time();
 	signal(SIGPIPE, SIG_IGN);	// a vanished reader shows up as EPIPE
 	in = open_in();
@@ -304,9 +414,10 @@ int main(int argc, char **argv)
 	for (;;) {
 		if (!fgets(line, sizeof(line), in)) {
 			flush_pending();
-			if (in == stdin)
+			// a file or stdin just ends; a FIFO's writer (the engine)
+			// went away: wait for the next one
+			if (in == stdin || !is_fifo(in))
 				return 0;
-			// the writer closed the FIFO (engine stopped): wait for the next
 			fclose(in);
 			in = open_in();
 			continue;

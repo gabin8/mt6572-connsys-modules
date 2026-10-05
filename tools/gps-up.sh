@@ -8,6 +8,10 @@
 #   engine -> /dev/gps, a FIFO in the chroot -> gps-nmea (dates out of the
 #   1024-week rollover, spoofed fixes withheld) -> $RUN/nmea, a FIFO -> gpsd
 #
+# With the clock unset (after a battery pull) gps-nmea sets it, and the RTC,
+# from the first fix that does not look foreign; $CLOCK records the clock
+# last seen set, its reference for that.
+#
 # start   sets up the chroot (first time: /data/nvram copied from the stock
 #         userdata, read-only), loads mtk_stp_gps_soc.ko, then starts gpsd,
 #         gps-nmea and the engine. A supervisor restarts the engine when it
@@ -24,6 +28,7 @@ cd /root/connsys || exit 1
 R=/root/andr
 RUN=/run/gps
 LOG=/var/log/gps-up.log
+CLOCK=/root/connsys/gps-clock
 ENGINE=/system/xbin/libmnlp_mt6572
 SYSTEM_DEV=${GPS_SYSTEM_DEV:-/dev/mmcblk1p4}
 DATA_DEV=${GPS_DATA_DEV:-/dev/mmcblk1p6}
@@ -124,12 +129,14 @@ start() {
 	fi
 	setup || { echo "gps-up: setup failed" >&2; log "setup failed"; return 1; }
 	mkdir -p $RUN
+	# a set clock is the reference for taking one from GPS later
+	[ "$(date -u +%Y)" -ge 2020 ] && date -u +%s > $CLOCK
 	rm -f $RUN/stop $RUN/nmea $R/dev/gps
 	mkfifo $RUN/nmea $R/dev/gps || return 1
 	# -n: read the source at once, without waiting for a client; gpsd
 	# listens on localhost only
 	gpsd -n -P $RUN/gpsd.pid $RUN/nmea || { echo "gps-up: gpsd failed" >&2; return 1; }
-	./gps-nmea $R/dev/gps $RUN/nmea 2>> $LOG &
+	./gps-nmea -c $CLOCK $R/dev/gps $RUN/nmea 2>> $LOG &
 	echo $! > $RUN/nmea.pid
 	supervise &
 	echo $! > $RUN/super.pid

@@ -110,7 +110,14 @@ The engine writes NMEA into a FIFO. `gps-nmea` moves the RMC date out of
 the engine's 1024-week-old era, drops the engine's own `$GPACCURACY`, and,
 with the system clock set, withholds the position sentences of any second
 whose satellite time is more than 120 s off the clock: a signal with a
-foreign time is a spoofed one. Satellite views still pass. gpsd (from the
+foreign time is a spoofed one. Satellite views still pass. With the clock
+unset (1970, after a battery pull), the filter sets it, and the RTC, from
+the first fix that does not look foreign: at most 16 satellites in view
+(a GPS-only sky shows about 14) and a time no earlier than the clock last
+seen set and at most 90 days after it. That reference is
+`/root/connsys/gps-clock`, which `gps-up.sh start` refreshes whenever the
+clock is set, else the filter's build date. A foreign-looking fix is
+withheld instead, and the log says why. gpsd (from the
 rootfs) serves the result on localhost:2947: `gpspipe -w`, `cgps`, or any
 gpsd client. The stock partitions are environment settings
 (`GPS_SYSTEM_DEV`, `GPS_DATA_DEV`; the defaults are the PAP5500 DUO's).
