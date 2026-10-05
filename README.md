@@ -23,7 +23,7 @@ out-of-tree modules in the spirit of
 | BT + WiFi together | working — inquiry alongside traffic, no assert; costs Wi-Fi latency |
 | WiFi AP / P2P (Wi-Fi Direct) | not started — hardware and firmware support it, driver sources are in git history (see [AP / P2P](#ap--p2p)) |
 | FM receiver (`fmradio/` MT6627 driver → `/dev/fm`) | working — tune, scan/seek, RDS (PI, station name, radio text), audio to the headphones through the AFE's CONSYS I2S input, recording and streaming through the AFE's capture device; the headphone cable is the antenna |
-| GPS (`conn_soc/` → `/dev/stpgps`) | working — first fix in about 50 s from an empty aiding store, about 10 s warm, with the device's own stock positioning engine; holds the chip awake while open, alongside BT. No bring-up script or gpsd feed yet (see [GPS](#gps)) |
+| GPS (`conn_soc/` → `/dev/stpgps`) | working — first fix in about 50 s from an empty aiding store, about 10 s warm, with the device's own stock positioning engine; holds the chip awake while open, alongside BT; `tools/gps-up.sh` serves it through gpsd (see [GPS](#gps)) |
 
 Verified on the Prestigio PAP5500 DUO; the Lenovo A369i carries the same
 silicon.
@@ -183,7 +183,8 @@ are in `tools/fm.md`.
 Pairing a classic HID keyboard end-to-end is documented in
 `tools/kbd-pair.md`.
 
-GPS has no bring-up script yet; see [GPS](#gps).
+GPS runs on demand with `tools/gps-up.sh start|stop|status`; see [GPS](#gps)
+and `tools/README.md`.
 
 ## GPS
 
@@ -224,8 +225,10 @@ GPS has no bring-up script yet; see [GPS](#gps).
     navigation).
   - Ioctl 7 (RTC power-loss flag) answers 0, as stock does. Answering 1
     makes every start a no-time start: 40-70 s to a fix instead of 10 s.
-- Not done yet: a bring-up script that starts and stops the engine, and an
-  NMEA feed for gpsd with the date corrected.
+- `tools/gps-up.sh` runs the engine on demand: engine → FIFO →
+  `tools/gps-nmea` (the RMC date moved forward 1024 weeks, spoofed fixes
+  withheld when the clock is set) → gpsd on localhost:2947. Details in
+  `tools/README.md`.
 
 ## Power management (PSM)
 

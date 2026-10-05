@@ -33,6 +33,7 @@ $CC -I tools/launcher -o tools/launcher/mtk_stp_launcher tools/launcher/stp_uart
 $CC -o tools/stpbt-vhci-bridge tools/stpbt-vhci-bridge.c
 $CC -o tools/stpbt-hci-test    tools/stpbt-hci-test.c
 $CC -o tools/stpgps-probe      tools/stpgps-probe.c
+$CC -o tools/gps-nmea          tools/gps-nmea.c
 $CC -I fmradio/inc -o tools/fmctl tools/fmctl.c
 # diagnostics, as needed
 $CC -o tools/hci-localver   tools/hci-localver.c
@@ -43,8 +44,8 @@ $CC -o tools/evrep          tools/evrep.c
 ```
 
 `deploy-modules-sd.sh` refuses to run without the launcher,
-`stpbt-hci-test`, `stpgps-probe` and `fmctl`, since nothing else provides
-them.
+`stpbt-hci-test`, `stpgps-probe`, `gps-nmea` and `fmctl`, since nothing
+else provides them.
 
 ## Bring-up
 
@@ -89,6 +90,31 @@ alone: `wlan_gen2` holds its own keep-awake reference, and forcing
 FM radio: listen, seek, scan and read RDS with `fm-up.sh [-b] [-n] [-s] [MHz]`;
 record or stream with `fm-record.sh <MHz> [seconds] [file|-]`. `fmctl` is
 the `/dev/fm` client both scripts drive. Everything is in [fm.md](fm.md).
+
+### `gps-up.sh`, `gps-nmea`
+
+GPS on demand: `gps-up.sh start|stop|status`. Nothing starts it at boot,
+since GPS keeps its RF on and the chip awake while it runs.
+- `start` sets up a chroot of the device's own stock `/system` (read-only)
+  under `/root/andr`, copies `/data/nvram` from the stock userdata the first
+  time (read-only mount), loads `mtk_stp_gps_soc.ko`, then starts gpsd, the
+  `gps-nmea` filter and the stock positioning engine
+  (`/system/xbin/libmnlp_mt6572`, not part of this repository). A
+  supervisor restarts the engine when it exits or a whole-chip reset takes
+  GPS away, backing off while the stack stays down.
+- `stop` stops all of it; GPS and its LNA go off with the engine.
+- `status` lists what runs, the filter's last verdict and gpsd's current
+  position report.
+
+The engine writes NMEA into a FIFO. `gps-nmea` moves the RMC date out of
+the engine's 1024-week-old era, drops the engine's own `$GPACCURACY`, and,
+with the system clock set, withholds the position sentences of any second
+whose satellite time is more than 120 s off the clock: a signal with a
+foreign time is a spoofed one. Satellite views still pass. gpsd (from the
+rootfs) serves the result on localhost:2947: `gpspipe -w`, `cgps`, or any
+gpsd client. The stock partitions are environment settings
+(`GPS_SYSTEM_DEV`, `GPS_DATA_DEV`; the defaults are the PAP5500 DUO's).
+Log: `/var/log/gps-up.log`.
 
 ## Resident programs
 

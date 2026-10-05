@@ -16,6 +16,7 @@ Module.symvers
 tools/btif-lpbk-test
 tools/stpbt-hci-test
 tools/stpgps-probe
+tools/gps-nmea
 tools/hci-localver
 tools/launcher/mtk_stp_launcher
 tools/stpbt-vhci-bridge

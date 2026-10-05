@@ -78,10 +78,11 @@ fi
 #       -o tools/launcher/mtk_stp_launcher tools/launcher/stp_uart_launcher.c
 #   arm-linux-gnueabihf-gcc -static -O2 -o tools/stpbt-hci-test tools/stpbt-hci-test.c
 #   arm-linux-gnueabihf-gcc -static -O2 -o tools/stpgps-probe tools/stpgps-probe.c
+#   arm-linux-gnueabihf-gcc -static -O2 -o tools/gps-nmea tools/gps-nmea.c
 # NOTE: use these glibc builds, NOT backups/connsys-firmware/6620_launcher —
 # that stock binary needs /system/bin/linker (bionic) and fails with a bare
 # "not found" on our rootfs.
-for b in launcher/mtk_stp_launcher stpbt-hci-test stpgps-probe; do
+for b in launcher/mtk_stp_launcher stpbt-hci-test stpgps-probe gps-nmea; do
 	[ -f "$M/tools/$b" ] || { echo "MISSING $M/tools/$b — build it (see README)" >&2; exit 1; }
 	install -m 0755 "$M/tools/$b" "$SD/root/connsys/$(basename "$b")"
 done
@@ -119,6 +120,10 @@ if ls "$M"/tools/wifi-fw/mt6627_fm_*.bin >/dev/null 2>&1; then
 else
 	echo "WARNING: no mt6627_fm_*.bin in tools/wifi-fw/ - FM cannot power up" >&2
 fi
+
+# 6. GPS: gps-up.sh next to the other bring-up scripts (its filter, gps-nmea,
+# went in with the tool binaries above; gpsd comes with the rootfs).
+install -m 0755 "$M/tools/gps-up.sh" "$SD/root/connsys/gps-up.sh"
 
 sync
 echo "deployed vermagic: $(modinfo -F vermagic "$M/btif/mtk_btif_drv.ko" 2>/dev/null | cut -d' ' -f1)"
