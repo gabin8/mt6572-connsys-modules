@@ -517,8 +517,9 @@ INT32 wmt_lib_ps_enable(VOID)
 static INT32 wmt_lib_ps_enable_locked(VOID)
 {
 	if (atomic_read(&gPsHold)) {
-		pr_info_ratelimited("wmt: PSM enable deferred, %d keep-awake ref(s) held\n",
-				    atomic_read(&gPsHold));
+		/* routine: the BT governor re-enables PSM every few seconds */
+		pr_debug("wmt: PSM enable deferred, %d keep-awake ref(s) held\n",
+			 atomic_read(&gPsHold));
 		return 0;
 	}
 
