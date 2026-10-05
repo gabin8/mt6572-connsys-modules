@@ -529,6 +529,10 @@ static INT32 wmt_lib_ps_enable_locked(VOID)
 	return 0;
 }
 
+static bool psm_log;
+module_param(psm_log, bool, 0644);
+MODULE_PARM_DESC(psm_log, "log every keep-awake transition (Wi-Fi traffic toggles it every few seconds)");
+
 /*
  * Take/drop a keep-awake reference. The first reference forces PSM off
  * regardless of gPsEnable; the last one released hands control back to the
@@ -540,7 +544,8 @@ INT32 mtk_wcn_wmt_psm_hold(VOID)
 	guard(mutex)(&gPsPolicyLock);
 
 	if (atomic_inc_return(&gPsHold) == 1) {
-		pr_info_ratelimited("wmt: keep-awake taken, forcing PSM off\n");
+		if (psm_log)
+			pr_info_ratelimited("wmt: keep-awake taken, forcing PSM off\n");
 		/* an op in flight already holds the monitor off */
 		if (!gPsOpBusy)
 			mtk_wcn_stp_psm_disable();
@@ -562,7 +567,8 @@ INT32 mtk_wcn_wmt_psm_release(VOID)
 		return -1;
 	}
 	if (left == 0) {
-		pr_info_ratelimited("wmt: keep-awake dropped, PSM back under policy\n");
+		if (psm_log)
+			pr_info_ratelimited("wmt: keep-awake dropped, PSM back under policy\n");
 		if (!gPsOpBusy)
 			wmt_lib_ps_enable_locked();
 	}
