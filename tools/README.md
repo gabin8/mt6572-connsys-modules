@@ -143,9 +143,9 @@ Connects `/dev/stpbt` to `/dev/vhci`, so the kernel's BT core gets a real
 `hci0` for BlueZ. Kill it to tear `hci0` down. Besides pumping packets it:
 - reframes the H4 stream: `/dev/stpbt` reads split packets anywhere, and
   vhci wants whole ones;
-- primes STP with a throwaway HCI_Reset. The first command after
-  function-on runs twice, and the late duplicate completion would desync
-  the core's adapter setup;
+- keeps vhci's own device-created notice (`ff <opcode> <index>`) off
+  the radio. The firmware answers it with a Hardware Error and stops
+  acking the core's first setup commands;
 - programs the factory BD_ADDR from `/etc/firmware/nvram/BT_Addr` with
   vendor opcode `0xfc1a`;
 - widens LE Set Event Mask to the events the firmware needs to report LE
