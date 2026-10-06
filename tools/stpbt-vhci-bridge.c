@@ -365,6 +365,16 @@ int main(void)
 			n = read(vh, buf, sizeof(buf));
 			if (n <= 0)
 				break;
+			/* hci_vhci's own notice that hci0 now exists (0xff,
+			 * opcode, index16) is not HCI traffic. Forwarded, the
+			 * firmware answers it with a Hardware Error and a
+			 * stray 0xfcc0 completion, STP stops acking the core's
+			 * first setup commands and retransmits them, and the
+			 * core logs "unexpected event for opcode ...". */
+			if (buf[0] == 0xff) {
+				fprintf(stderr, "dropping vhci vendor pkt (%d bytes)\n", n);
+				continue;
+			}
 			if (n >= 4 && buf[0] == 0x01 &&
 			    buf[1] == 0x04 && buf[2] == 0x10) {
 				/* Read Local Extended Features: fake an
