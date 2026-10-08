@@ -20,7 +20,7 @@ out-of-tree modules in the spirit of
 | Bluetooth (`/dev/stpbt` → BlueZ `hci0`) | working — pairing, BR/EDR HID keyboard + BLE HID mouse together, inbound reconnect (see [kbd-pair.md](tools/kbd-pair.md)) |
 | Power management (PSM / chip sleep) | working — sleeps on an idle link with BT and Wi-Fi up (see [PSM](#power-management-psm)) |
 | WiFi (`wlan/` gen2 driver → cfg80211 `wlan0`) | working — scan, WPA2-PSK association, DHCP, station stats, ~34/22 Mbit/s TCP down/up |
-| BT + WiFi together | working — inquiry alongside traffic, no assert; costs Wi-Fi latency |
+| BT + WiFi together | working with Wi-Fi in CAM, the default — HID keyboard + mouse alongside Wi-Fi traffic; with 802.11 power save on, BT HID traffic makes the BT firmware assert, and a BLE mouse can still drop now and then (see [Operational notes](#operational-notes)) |
 | WiFi AP / P2P (Wi-Fi Direct) | not started — hardware and firmware support it, driver sources are in git history (see [AP / P2P](#ap--p2p)) |
 | FM receiver (`fmradio/` MT6627 driver → `/dev/fm`) | working — tune, scan/seek, RDS (PI, station name, radio text), audio to the headphones through the AFE's CONSYS I2S input, recording and streaming through the AFE's capture device; the headphone cable is the antenna |
 | GPS (`conn_soc/` → `/dev/stpgps`) | working — first fix in about 50 s from an empty aiding store, about 10 s warm, with the device's own stock positioning engine; holds the chip awake while open, alongside BT; `tools/gps-up.sh` serves it through gpsd (see [GPS](#gps)) |
@@ -410,6 +410,22 @@ reference implementation rather than something that will compile as-is.
   sleeping 19 times during the inquiry. That cost is the hardware, not this
   stack: stock Android on the same board shows ~517 ms average and 1.1 s
   worst case under the same load.
+- Wi-Fi power save and Bluetooth HID traffic do not mix. BT and Wi-Fi share
+  one antenna (`WMT_SOC.cfg`: `coex_wmt_ant_mode=1`). With Wi-Fi associated
+  in 802.11 power save, a classic keyboard and a BLE mouse in use make the
+  BT firmware assert (`bluetooth/core/ll/ll_lc/ll_lc_log.c #223`) and WMT
+  resets the whole chip - 9 times in about 500 s in one run. With the
+  interface in CAM there were none in the following 36 minutes, so `wlan0`
+  comes up in CAM. Power save is still available per interface
+  (`iw dev wlan0 set power_save on`); turn it on only while no Bluetooth
+  device is connected.
+- Even in CAM, a BLE mouse intermittently drops on LE supervision timeout
+  (`0x08`) while a classic keyboard and Wi-Fi are both active, and
+  reconnecting it while the keyboard stays connected has been unreliable.
+  With the Wi-Fi function off neither happens. The chip's own coexistence
+  controls are not wired up: the `coex_*` keys in `WMT_SOC.cfg` are parsed
+  but never sent (`CFG_SUBSYS_COEX_NEED` is 0), and the Wi-Fi driver's
+  BWCS path is compiled out (`CFG_SUPPORT_BCM` is 0).
 
 ## Origins and license
 
