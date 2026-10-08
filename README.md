@@ -422,10 +422,11 @@ reference implementation rather than something that will compile as-is.
 - Even in CAM, a BLE mouse intermittently drops on LE supervision timeout
   (`0x08`) while a classic keyboard and Wi-Fi are both active, and
   reconnecting it while the keyboard stays connected has been unreliable.
-  With the Wi-Fi function off neither happens. The chip's own coexistence
-  controls are not wired up: the `coex_*` keys in `WMT_SOC.cfg` are parsed
-  but never sent (`CFG_SUBSYS_COEX_NEED` is 0), and the Wi-Fi driver's
-  BWCS path is compiled out (`CFG_SUPPORT_BCM` is 0).
+  With the Wi-Fi function off neither happens. This configuration matches
+  stock MT6572: only the antenna mode from `WMT_SOC.cfg` is sent (the other
+  WMT coexistence commands are compiled out, `CFG_SUBSYS_COEX_NEED` 0), and
+  the Wi-Fi driver's BWCS path is compiled out (`CFG_SUPPORT_BCM` 0, enabled
+  only for MT5931), so arbitration is left to the CONSYS firmware there too.
 
 ## Origins and license
 
