@@ -468,8 +468,6 @@ VOID glSetHifInfo(GLUE_INFO_T *GlueInfo, ULONG ulCookie)
 #ifdef CONFIG_OF
 #if !defined(CONFIG_MTK_CLKMGR)
 	HifInfo->clk_wifi_dma = devm_clk_get(&HifAhbPDev->dev, "wifi-dma");
-	if (IS_ERR(HifInfo->clk_wifi_dma))
-		DBGLOG(INIT, ERROR, "[WiFi/HIF][CCF]cannot get HIF clk_wifi_dma clock.\n");
 	DBGLOG(INIT, TRACE, "[WiFi/HIF][CCF]HIF clk_wifi_dma=0x%p\n", HifInfo->clk_wifi_dma);
 #endif
 #endif
@@ -480,7 +478,15 @@ VOID glSetHifInfo(GLUE_INFO_T *GlueInfo, ULONG ulCookie)
 #if (CONF_MTK_AHB_DMA == 1)
 	spin_lock_init(&HifInfo->DdmaLock);
 
+#if defined(CONFIG_OF) && !defined(CONFIG_MTK_CLKMGR)
+	/* device trees without the Wi-Fi DMA support have no "wifi-dma" clock */
+	if (IS_ERR(HifInfo->clk_wifi_dma))
+		DBGLOG(INIT, WARN, "[WiFi/HIF] no wifi-dma clock, using PIO\n");
+	else
+		HifPdmaInit(HifInfo);
+#else
 	HifPdmaInit(HifInfo);
+#endif
 #endif /* CONF_MTK_AHB_DMA */
 
 	/* Start loopback test after 10 seconds */
@@ -676,13 +682,21 @@ INT_32 glBusSetIrq(PVOID pvData, PVOID pfnIsr, PVOID pvCookie)
 	}
 
 #if (CONF_HIF_DMA_INT == 1)
-	/* Register DMA IRQ */
-	if (request_irq(irq_id2, HifDmaISR, irq_flags, "AHB_DMA", prNetDevice)) {
-		DBGLOG(INIT, ERROR, "WIFI-OF: request dma irq %d fail!\n", irq_id2);
-		free_irq(irq_id, prNetDevice);
-		return -1;
+	/* device trees without the Wi-Fi DMA support have no DMA interrupt */
+	if (HifInfo->fgDmaEnable && !irq_id2) {
+		DBGLOG(INIT, WARN, "WIFI-OF: no dma irq, using PIO\n");
+		HifInfo->fgDmaEnable = FALSE;
 	}
-	HifInfo->DmaIrq = irq_id2;
+
+	/* Register DMA IRQ */
+	if (HifInfo->fgDmaEnable) {
+		if (request_irq(irq_id2, HifDmaISR, irq_flags, "AHB_DMA", prNetDevice)) {
+			DBGLOG(INIT, ERROR, "WIFI-OF: request dma irq %d fail!\n", irq_id2);
+			free_irq(irq_id, prNetDevice);
+			return -1;
+		}
+		HifInfo->DmaIrq = irq_id2;
+	}
 #endif
 
 	return 0;
