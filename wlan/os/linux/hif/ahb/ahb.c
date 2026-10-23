@@ -176,6 +176,8 @@
 #if !defined(CONFIG_MTK_CLKMGR)
 #include <linux/clk.h>
 #endif
+#include <linux/mm.h>
+#include <linux/sched/task_stack.h>
 
 /* #define MTK_DMA_BUF_MEMCPY_SUP */ /* no virt_to_phys() use */
 /* #define HIF_DEBUG_SUP */
@@ -854,6 +856,16 @@ BOOLEAN kalDevRegWrite(IN GLUE_INFO_T *GlueInfo, IN UINT_32 RegOffset, IN UINT_3
 
 } /* end of kalDevRegWrite() */
 
+/*
+ * The GDMA reaches only the linear map, and on this non-coherent CPU a DMA
+ * buffer must not share cache lines with live data: no vmalloc memory
+ * (VMAP_STACK puts the stacks there) and no stack buffers. Some init and
+ * command-response events are read into stack arrays; those go by PIO.
+ */
+static inline BOOLEAN HifIsDmaBuf(PVOID Buf)
+{
+	return virt_addr_valid(Buf) && !object_is_on_stack(Buf);
+}
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -904,7 +916,7 @@ kalDevPortRead(IN P_GLUE_INFO_T GlueInfo, IN UINT_16 Port, IN UINT_32 Size, OUT 
 	/* Read */
 #if (CONF_MTK_AHB_DMA == 1)
 	if ((HifInfo->fgDmaEnable == TRUE) && (HifInfo->DmaOps != NULL)
-		&& ((Port == MCR_WRDR0) || (Port == MCR_WRDR1))) {
+		&& ((Port == MCR_WRDR0) || (Port == MCR_WRDR1)) && HifIsDmaBuf(Buf)) {
 		/* only for data port */
 #ifdef MTK_DMA_BUF_MEMCPY_SUP
 		VOID *DmaVBuf = NULL, *DmaPBuf = NULL;
@@ -1090,7 +1102,7 @@ kalDevPortWrite(IN P_GLUE_INFO_T GlueInfo, IN UINT_16 Port, IN UINT_32 Size, IN 
 	/* Write */
 #if (CONF_MTK_AHB_DMA == 1)
 	if ((HifInfo->fgDmaEnable == TRUE) && (HifInfo->DmaOps != NULL) && ((Port == MCR_WTDR0) ||
-		(Port == MCR_WTDR1))) {
+		(Port == MCR_WTDR1)) && HifIsDmaBuf(Buf)) {
 		/* only for data port */
 #ifdef MTK_DMA_BUF_MEMCPY_SUP
 		VOID *DmaVBuf = NULL, *DmaPBuf = NULL;
