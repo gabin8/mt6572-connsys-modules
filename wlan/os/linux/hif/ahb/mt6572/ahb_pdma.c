@@ -527,7 +527,7 @@ HifGdmaRegDump(
         }
     }
 
-    printk("\nGDMA> clock status = 0x%x\n\n", *(volatile unsigned int *)0xF0000024);
+    printk("\n");
 }
 
 
