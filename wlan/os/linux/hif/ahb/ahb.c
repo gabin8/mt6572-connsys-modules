@@ -520,6 +520,16 @@ VOID glSetHifInfo(GLUE_INFO_T *GlueInfo, ULONG ulCookie)
 /*----------------------------------------------------------------------------*/
 VOID glClearHifInfo(GLUE_INFO_T *GlueInfo)
 {
+#if (CONF_HIF_DMA_INT == 1)
+	/*
+	 * Freed here, not in glBusFreeIrq(): wlanRemove() frees the bus
+	 * interrupt before wlanAdapterStop(), which still moves data.
+	 */
+	if (GlueInfo->rHifInfo.DmaIrq) {
+		free_irq(GlueInfo->rHifInfo.DmaIrq, GlueInfo->prDevHandler);
+		GlueInfo->rHifInfo.DmaIrq = 0;
+	}
+#endif
 	iounmap(GlueInfo->rHifInfo.HifRegBaseAddr);
 	iounmap(GlueInfo->rHifInfo.DmaRegBaseAddr);
 	iounmap(GlueInfo->rHifInfo.McuRegBaseAddr);
@@ -627,10 +637,13 @@ INT_32 glBusSetIrq(PVOID pvData, PVOID pfnIsr, PVOID pvCookie)
 	struct device_node *node = NULL;
 	unsigned int irq_info[3] = { 0, 0, 0 };
 	/* unsigned int phy_base; */
-	unsigned int irq_id, irq_id2 = 0;
+	unsigned int irq_id = 0, irq_id2 = 0;
 	unsigned int irq_flags = 0;
 
 	struct net_device *prNetDevice;
+#if (CONF_HIF_DMA_INT == 1)
+	GL_HIF_INFO_T *HifInfo = &((P_GLUE_INFO_T) pvCookie)->rHifInfo;
+#endif
 
 	ASSERT(pvData);
 	if (!pvData)
@@ -666,8 +679,10 @@ INT_32 glBusSetIrq(PVOID pvData, PVOID pfnIsr, PVOID pvCookie)
 	/* Register DMA IRQ */
 	if (request_irq(irq_id2, HifDmaISR, irq_flags, "AHB_DMA", prNetDevice)) {
 		DBGLOG(INIT, ERROR, "WIFI-OF: request dma irq %d fail!\n", irq_id2);
+		free_irq(irq_id, prNetDevice);
 		return -1;
 	}
+	HifInfo->DmaIrq = irq_id2;
 #endif
 
 	return 0;
@@ -749,6 +764,7 @@ INT_32 glBusSetIrq(PVOID pvData, PVOID pfnIsr, PVOID pvCookie)
 		free_irq(MT_WF_HIF_IRQ_ID, prNetDevice);
 		return -1;
 	}
+	HifInfo->DmaIrq = MT_GDMA2_IRQ_ID;
 #endif /* CONF_HIF_DMA_INT */
 
 	return ret;
