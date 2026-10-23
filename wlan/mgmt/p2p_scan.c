@@ -633,13 +633,12 @@ scanP2pProcessBeaconAndProbeResp(IN P_ADAPTER_T prAdapter,
 
 			ASSERT_BREAK((prSwRfb != NULL) && (prBssDesc != NULL));
 
-			if (((prWlanBeaconFrame->u2FrameCtrl & MASK_FRAME_TYPE) != MAC_FRAME_PROBE_RSP)) {
-				/* Only report Probe Response frame to supplicant. */
-				/* Probe response collect much more information. */
-
-				if (fgIsSkipThisBeacon || prBssDesc->eBand == BAND_2G4)
-					break;
-			}
+			/*
+			 * Report beacons as well: a client in group formation finds
+			 * the GO by its beacons when its probe requests go unanswered.
+			 */
+			if (fgIsSkipThisBeacon)
+				break;
 
 			rChannelInfo.ucChannelNum = prBssDesc->ucChannelNum;
 			rChannelInfo.eBand = prBssDesc->eBand;
