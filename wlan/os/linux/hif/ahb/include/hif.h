@@ -181,7 +181,7 @@ typedef struct _GL_HIF_INFO_T {
 
 #if (CONF_HIF_DMA_INT == 1)
 	wait_queue_head_t HifDmaWaitq;
-	UINT_32 HifDmaWaitFlg;
+	unsigned long HifDmaWaitFlg;
 #endif				/* CONF_HIF_DMA_INT */
 
 	/* DMA related */
