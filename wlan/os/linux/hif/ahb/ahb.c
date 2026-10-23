@@ -960,7 +960,7 @@ kalDevPortRead(IN P_GLUE_INFO_T GlueInfo, IN UINT_16 Port, IN UINT_32 Size, OUT 
 	/* Read */
 #if (CONF_MTK_AHB_DMA == 1)
 	if ((HifInfo->fgDmaEnable == TRUE) && (HifInfo->DmaOps != NULL)
-		&& ((Port == MCR_WRDR0) || (Port == MCR_WRDR1)) && HifIsDmaBuf(Buf)) {
+		&& ((Port == MCR_WRDR0) || (Port == MCR_WRDR1)) && Size && HifIsDmaBuf(Buf)) {
 		/* only for data port */
 #ifdef MTK_DMA_BUF_MEMCPY_SUP
 		VOID *DmaVBuf = NULL, *DmaPBuf = NULL;
