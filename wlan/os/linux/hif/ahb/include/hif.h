@@ -68,7 +68,7 @@
 *                         C O M P I L E R   F L A G S
 ********************************************************************************
 */
-#define CONF_MTK_AHB_DMA         0	/* PIO mode is default mode if DMA is disabled */
+#define CONF_MTK_AHB_DMA         1	/* PIO mode is default mode if DMA is disabled */
 
 #define CONF_HIF_DEV_MISC        0	/* register as misc device */
 #define CONF_HIF_LOOPBACK_AUTO   0	/* hif loopback test triggered by open() */

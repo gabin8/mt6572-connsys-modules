@@ -6,7 +6,7 @@
 
 #include <linux/kernel.h>	/* include stddef.h for NULL */
 
-#define CONF_MTK_AHB_DMA            0
+#define CONF_MTK_AHB_DMA            1
 
 /* Type definition for signed integers */
 /*typedef signed char INT8, *PINT8;

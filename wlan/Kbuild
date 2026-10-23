@@ -6,8 +6,6 @@
 # Bring-up configuration:
 #  - P2P/AP built in (CFG_ENABLE_WIFI_DIRECT=1): /dev/wmtWifi "A" brings up
 #    ap0, "P"/"S" brings up p2p0, both on a second wiphy
-#  - PIO mode only: CONF_MTK_AHB_DMA=0 in os/linux/hif/ahb/include/hif.h;
-#    the MT6572 DMA glue (AP_DMA GDMA2) is a later optimization
 
 ccflags-y += -DLINUX -DMT6628
 ccflags-y += -D_HIF_SDIO=1
@@ -101,4 +99,5 @@ wlan_gen2-objs := \
 	mgmt/p2p_scan.o \
 	mgmt/p2p_state.o \
 	os/linux/hif/ahb/arm.o \
-	os/linux/hif/ahb/ahb.o
+	os/linux/hif/ahb/ahb.o \
+	os/linux/hif/ahb/mt6572/ahb_pdma.o
