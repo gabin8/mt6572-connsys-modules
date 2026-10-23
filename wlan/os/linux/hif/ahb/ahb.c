@@ -470,7 +470,12 @@ VOID glSetHifInfo(GLUE_INFO_T *GlueInfo, ULONG ulCookie)
 	DBGLOG(INIT, INFO, "[WiFi/HIF] ChipID = 0x%x\n", HifInfo->ChipID);
 #ifdef CONFIG_OF
 #if !defined(CONFIG_MTK_CLKMGR)
-	HifInfo->clk_wifi_dma = devm_clk_get(&HifAhbPDev->dev, "wifi-dma");
+	/* released in glClearHifInfo(); the platform device outlives Wi-Fi off */
+	HifInfo->clk_wifi_dma = clk_get(&HifAhbPDev->dev, "wifi-dma");
+	if (!IS_ERR(HifInfo->clk_wifi_dma) && clk_prepare(HifInfo->clk_wifi_dma)) {
+		clk_put(HifInfo->clk_wifi_dma);
+		HifInfo->clk_wifi_dma = ERR_PTR(-EIO);
+	}
 	DBGLOG(INIT, TRACE, "[WiFi/HIF][CCF]HIF clk_wifi_dma=0x%p\n", HifInfo->clk_wifi_dma);
 #endif
 #endif
@@ -542,6 +547,12 @@ VOID glClearHifInfo(GLUE_INFO_T *GlueInfo)
 	iounmap(GlueInfo->rHifInfo.HifRegBaseAddr);
 	iounmap(GlueInfo->rHifInfo.DmaRegBaseAddr);
 	iounmap(GlueInfo->rHifInfo.McuRegBaseAddr);
+#if defined(CONFIG_OF) && !defined(CONFIG_MTK_CLKMGR)
+	if (!IS_ERR(GlueInfo->rHifInfo.clk_wifi_dma)) {
+		clk_unprepare(GlueInfo->rHifInfo.clk_wifi_dma);
+		clk_put(GlueInfo->rHifInfo.clk_wifi_dma);
+	}
+#endif
 	return;
 
 } /* end of glClearHifInfo() */

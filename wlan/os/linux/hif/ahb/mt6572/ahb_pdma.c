@@ -483,12 +483,13 @@ HifGdmaClockCtrl(
 	else
 		disable_clock(MT_CG_APDMA_SW_CG, "WLAN");
 #else
+	/* prepared once in glSetHifInfo() */
 	if (FlgIsEnabled == TRUE) {
-		ret = clk_prepare_enable(g_clk_wifi_pdma);
+		ret = clk_enable(g_clk_wifi_pdma);
 		if (ret)
-			printk("[CCF]clk_prepare_enable ret= %d\n", ret);
+			printk("[CCF]clk_enable ret= %d\n", ret);
 	} else {
-		clk_disable_unprepare(g_clk_wifi_pdma);
+		clk_disable(g_clk_wifi_pdma);
 	}
 #endif
 }
