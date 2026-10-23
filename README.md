@@ -423,6 +423,15 @@ Known limits:
   GO negotiation from a peer never reach wpa_supplicant.
 - The vendor's P2P wireless-extensions ioctl interface is gone: current
   kernels never call `ndo_do_ioctl` for it, and nl80211 replaces it.
+- As group owner, wpa_supplicant 2.11 usually answers no probe requests.
+  Switching `p2p0` to GO mode drops its frame registrations, but
+  wpa_supplicant keeps its Probe Request registration from P2P Listen as
+  if it were still active ("Probe Request reporting already on!" in its
+  debug log), so the driver filters probe requests out. Clients that also
+  take the GO's beacons, this driver included, still join; one that waits
+  for a probe response fails group formation. The fix belongs in
+  wpa_supplicant's `nl80211_setup_ap()`: drop the stale handle and
+  register again.
 
 ## Operational notes
 
