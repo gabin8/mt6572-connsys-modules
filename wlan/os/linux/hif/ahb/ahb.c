@@ -954,9 +954,8 @@ kalDevPortRead(IN P_GLUE_INFO_T GlueInfo, IN UINT_16 Port, IN UINT_32 Size, OUT 
 		GL_HIF_DMA_OPS_T *prDmaOps = HifInfo->DmaOps;
 		MTK_WCN_HIF_DMA_CONF DmaConf;
 		UINT_32 LoopCnt;
+#if (CONF_HIF_DMA_INT == 0)
 		unsigned long PollTimeout;
-#if (CONF_HIF_DMA_INT == 1)
-		INT_32 RtnVal = 0;
 #endif
 		/* config DMA, Port = MCR_WRDR0 or MCR_WRDR1 */
 		DmaConf.Count = Size;
@@ -998,13 +997,20 @@ kalDevPortRead(IN P_GLUE_INFO_T GlueInfo, IN UINT_16 Port, IN UINT_32 Size, OUT 
 
 		prDmaOps->DmaClockCtrl(TRUE);
 		prDmaOps->DmaConfig(HifInfo, &DmaConf);
+#if (CONF_HIF_DMA_INT == 1)
+		HifInfo->HifDmaWaitFlg = 0;
+#endif
 		prDmaOps->DmaStart(HifInfo);
 
 #if (CONF_HIF_DMA_INT == 1)
-		RtnVal = wait_event_interruptible_timeout(HifInfo->HifDmaWaitq, (HifInfo->HifDmaWaitFlg != 0), 1000);
-		if (RtnVal <= 0)
-			DBGLOG(RX, ERROR, "fatal error1! reset DMA!\n");
-		HifInfo->HifDmaWaitFlg = 0;
+		if (!wait_event_timeout(HifInfo->HifDmaWaitq, HifInfo->HifDmaWaitFlg != 0, HZ * 5)) {
+			DBGLOG(RX, ERROR, "RX DMA Timeout, HSTCR: 0x%08x, and dump WHISR EnhanceMode data\n",
+					u4HSTCRValue);
+			HifDumpEnhanceModeData(GlueInfo->prAdapter);
+			if (prDmaOps->DmaRegDump != NULL)
+				prDmaOps->DmaRegDump(HifInfo);
+			WlanDmaFatalErr = 1;
+		}
 #else
 		PollTimeout = jiffies + HZ * 5;
 
@@ -1140,9 +1146,8 @@ kalDevPortWrite(IN P_GLUE_INFO_T GlueInfo, IN UINT_16 Port, IN UINT_32 Size, IN 
 		GL_HIF_DMA_OPS_T *prDmaOps = HifInfo->DmaOps;
 		MTK_WCN_HIF_DMA_CONF DmaConf;
 		UINT_32 LoopCnt;
+#if (CONF_HIF_DMA_INT == 0)
 		unsigned long PollTimeout;
-#if (CONF_HIF_DMA_INT == 1)
-		INT_32 RtnVal = 0;
 #endif
 
 		/* config GDMA */
@@ -1175,13 +1180,18 @@ kalDevPortWrite(IN P_GLUE_INFO_T GlueInfo, IN UINT_16 Port, IN UINT_32 Size, IN 
 
 		prDmaOps->DmaClockCtrl(TRUE);
 		prDmaOps->DmaConfig(HifInfo, &DmaConf);
+#if (CONF_HIF_DMA_INT == 1)
+		HifInfo->HifDmaWaitFlg = 0;
+#endif
 		prDmaOps->DmaStart(HifInfo);
 
 #if (CONF_HIF_DMA_INT == 1)
-		RtnVal = wait_event_interruptible_timeout(HifInfo->HifDmaWaitq, (HifInfo->HifDmaWaitFlg != 0), 1000);
-		if (RtnVal <= 0)
-			DBGLOG(TX, ERROR, "fatal error1! reset DMA!\n");
-		HifInfo->HifDmaWaitFlg = 0;
+		if (!wait_event_timeout(HifInfo->HifDmaWaitq, HifInfo->HifDmaWaitFlg != 0, HZ * 5)) {
+			DBGLOG(TX, ERROR, "TX DMA Timeout, HSTCR: 0x%08x\n", u4HSTCRValue);
+			if (prDmaOps->DmaRegDump != NULL)
+				prDmaOps->DmaRegDump(HifInfo);
+			WlanDmaFatalErr = 1;
+		}
 #else
 
 		LoopCnt = 0;
@@ -1347,7 +1357,7 @@ static irqreturn_t HifDmaISR(IN int Irq, IN void *Arg)
 	set_bit(1, &HifInfo->HifDmaWaitFlg);
 
 	/* when we got sdio interrupt, we wake up the tx servie thread */
-	wake_up_interruptible(&HifInfo->HifDmaWaitq);
+	wake_up(&HifInfo->HifDmaWaitq);
 
 	return IRQ_HANDLED;
 
