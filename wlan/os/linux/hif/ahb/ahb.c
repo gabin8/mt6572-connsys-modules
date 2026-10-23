@@ -415,8 +415,11 @@ VOID glResetHif(GLUE_INFO_T *GlueInfo)
 
 	ASSERT(GlueInfo);
 	HifInfo = &GlueInfo->rHifInfo;
-	if (HifInfo->DmaOps)
+	if (HifInfo->DmaOps) {
+		HifInfo->DmaOps->DmaClockCtrl(TRUE);
 		HifInfo->DmaOps->DmaReset(HifInfo);
+		HifInfo->DmaOps->DmaClockCtrl(FALSE);
+	}
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1031,6 +1034,11 @@ kalDevPortRead(IN P_GLUE_INFO_T GlueInfo, IN UINT_16 Port, IN UINT_32 Size, OUT 
 			for dma timeout case, interrupt may be set after we clear it */
 		prDmaOps->DmaStop(HifInfo);
 		prDmaOps->DmaAckIntr(HifInfo);
+#if (CONF_HIF_DMA_INT == 1)
+		/* a completion after the timeout: let its handler finish before the clock goes off */
+		if (WlanDmaFatalErr)
+			synchronize_irq(HifInfo->DmaIrq);
+#endif
 
 		LoopCnt = 0;
 		do {
@@ -1214,6 +1222,11 @@ kalDevPortWrite(IN P_GLUE_INFO_T GlueInfo, IN UINT_16 Port, IN UINT_32 Size, IN 
 			for dma timeout case, interrupt may be set after we clear it */
 		prDmaOps->DmaStop(HifInfo);
 		prDmaOps->DmaAckIntr(HifInfo);
+#if (CONF_HIF_DMA_INT == 1)
+		/* a completion after the timeout: let its handler finish before the clock goes off */
+		if (WlanDmaFatalErr)
+			synchronize_irq(HifInfo->DmaIrq);
+#endif
 
 		LoopCnt = 0;
 		do {
