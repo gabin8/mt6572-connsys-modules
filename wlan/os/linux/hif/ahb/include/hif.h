@@ -76,7 +76,7 @@
 
 #define CONF_HIF_PMIC_TEST       0	/* test purpose: power on CONNSYS */
 
-#define CONF_HIF_DMA_INT         0	/* DMA interrupt mode */
+#define CONF_HIF_DMA_INT         1	/* DMA interrupt mode */
 
 /*******************************************************************************
 *                    E X T E R N A L   R E F E R E N C E S

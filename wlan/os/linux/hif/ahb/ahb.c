@@ -625,7 +625,7 @@ INT_32 glBusSetIrq(PVOID pvData, PVOID pfnIsr, PVOID pvCookie)
 	struct device_node *node = NULL;
 	unsigned int irq_info[3] = { 0, 0, 0 };
 	/* unsigned int phy_base; */
-	unsigned int irq_id = 0;
+	unsigned int irq_id, irq_id2 = 0;
 	unsigned int irq_flags = 0;
 
 	struct net_device *prNetDevice;
@@ -639,6 +639,9 @@ INT_32 glBusSetIrq(PVOID pvData, PVOID pfnIsr, PVOID pvCookie)
 	if (node) {
 		irq_id = irq_of_parse_and_map(node, 0);
 		DBGLOG(INIT, INFO, "WIFI-OF: get wifi irq(%d)\n", irq_id);
+
+		irq_id2 = irq_of_parse_and_map(node, 1);
+		DBGLOG(INIT, INFO, "WIFI-OF: get dma irq(%d)\n", irq_id2);
 	} else {
 		DBGLOG(INIT, ERROR, "WIFI-OF: get wifi device node fail\n");
 	}
@@ -656,6 +659,14 @@ INT_32 glBusSetIrq(PVOID pvData, PVOID pfnIsr, PVOID pvCookie)
 		DBGLOG(INIT, ERROR, "WIFI-OF: request irq %d fail!\n", irq_id);
 		return -1;
 	}
+
+#if (CONF_HIF_DMA_INT == 1)
+	/* Register DMA IRQ */
+	if (request_irq(irq_id2, HifDmaISR, irq_flags, "AHB_DMA", prNetDevice)) {
+		DBGLOG(INIT, ERROR, "WIFI-OF: request dma irq %d fail!\n", irq_id2);
+		return -1;
+	}
+#endif
 
 	return 0;
 }
