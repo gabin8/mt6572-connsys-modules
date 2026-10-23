@@ -1035,8 +1035,10 @@ kalDevPortRead(IN P_GLUE_INFO_T GlueInfo, IN UINT_16 Port, IN UINT_32 Size, OUT 
 		LoopCnt = 0;
 		do {
 			if (LoopCnt++ > 100000) {
-				/* TODO: impossible! reset DMA */
 				DBGLOG(RX, ERROR, "fatal error2! reset DMA!\n");
+				/* stop the channel before its buffer is unmapped */
+				prDmaOps->DmaReset(HifInfo);
+				WlanDmaFatalErr = 1;
 				break;
 			}
 		} while (prDmaOps->DmaPollStart(HifInfo) != 0);
@@ -1217,6 +1219,9 @@ kalDevPortWrite(IN P_GLUE_INFO_T GlueInfo, IN UINT_16 Port, IN UINT_32 Size, IN 
 		do {
 			if (LoopCnt++ > 100000) {
 				DBGLOG(TX, ERROR, "fatal error2! reset DMA!\n");
+				/* stop the channel before its buffer is unmapped */
+				prDmaOps->DmaReset(HifInfo);
+				WlanDmaFatalErr = 1;
 				break;
 			}
 		} while (prDmaOps->DmaPollStart(HifInfo) != 0);
