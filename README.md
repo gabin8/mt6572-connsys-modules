@@ -19,7 +19,7 @@ out-of-tree modules in the spirit of
 | WMT/STP control plane, firmware download | working |
 | Bluetooth (`/dev/stpbt` → BlueZ `hci0`) | working — pairing, BR/EDR HID keyboard + BLE HID mouse together, inbound reconnect (see [kbd-pair.md](tools/kbd-pair.md)) |
 | Power management (PSM / chip sleep) | working — sleeps on an idle link with BT and Wi-Fi up (see [PSM](#power-management-psm)) |
-| WiFi (`wlan/` gen2 driver → cfg80211 `wlan0`) | working — scan, WPA2-PSK association, DHCP, station stats, ~34/22 Mbit/s TCP down/up |
+| WiFi (`wlan/` gen2 driver → cfg80211 `wlan0`) | working — scan, WPA2-PSK association, DHCP, station stats, ~34/22 Mbit/s TCP down/up; data through the AP DMA (GDMA2) with a completion interrupt, PIO on device trees without the DMA entries (see [Kernel prerequisites](#kernel-prerequisites)) |
 | BT + WiFi together | working with Wi-Fi in CAM, the default — HID keyboard + mouse alongside Wi-Fi traffic; with 802.11 power save on, BT HID traffic makes the BT firmware assert, and a BLE mouse can still drop now and then (see [Operational notes](#operational-notes)) |
 | WiFi AP (hotspot) | working — `ap0` next to an associated `wlan0` on the same channel, WPA2-PSK through wpa_supplicant `mode=2`, ~22-24 Mbit/s TCP both ways, ~11/7 Mbit/s down/up to a client sharing `wlan0`'s uplink through NAT; with Bluetooth's background LE scan at its default, clients lose a few percent of small uplink frames (see [AP / P2P](#ap--p2p)) |
 | WiFi P2P (Wi-Fi Direct) | working — `p2p0` next to an associated `wlan0`: discovery, provision discovery, GO negotiation, WPS PBC, persistent groups re-invoked from either side, service discovery both ways, as group owner or client, ~19-28 Mbit/s TCP both ways (see [AP / P2P](#ap--p2p)) |
@@ -67,7 +67,10 @@ The kernel tree the modules build against must provide:
     `gps_lna_state_oh` and `gps_lna_state_ol` pinctrl states that drive its
     enable pin (low, high, low),
   - `wifi@180f0000` node (`mediatek,wifi`, the CONSYS Wi-Fi AHB window,
-    GIC SPI 123 level-low) for the wlan driver;
+    GIC SPI 123 level-low) for the wlan driver. For data through the AP
+    DMA's GDMA2 channel it also needs GIC SPI 36 (level-low) as its second
+    interrupt and the AP DMA clock (`CLK_TOP_APDMA`) as `wifi-dma`; without
+    them the driver uses PIO;
 - `CONFIG_BT=m` core with `CONFIG_BT_HCIVHCI=m`, `CONFIG_BT_HIDP=m`,
   `CONFIG_UHID=m` for the BlueZ/HID path, plus the SMP pairing crypto the
   BT core selects — `ecc`, `ecdh_generic` and `kpp`. Whether each of those
